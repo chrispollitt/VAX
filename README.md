@@ -129,3 +129,7 @@ Both are kept clean under `-ansi -pedantic -Wall -Wextra` (and ARTY under
 * Tank hit points and fuel (drive a few columns between shots)
 * Napalm / roller / "funky bomb" weapons
 * A Fortran, Pascal, COBOL or BASIC program for every compiler on the box
+
+## License
+
+[MIT](LICENSE)
