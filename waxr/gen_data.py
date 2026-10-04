@@ -348,3 +348,213 @@ DATA = [
    ]),
  ]),
 ]
+
+
+# ---------------------------------------------------------------------------
+# The real box.  Cassettes transcribed from a photo of the actual collection.
+# Condition, price and year bought are unknown (0 / "?"); the program shows
+# "Grade unknown", "priceless" and "????".  Album years are only filled in
+# where known with confidence (0 = unknown).  Entries for an artist or album
+# that already exists above are merged by gen_sql.py.
+# ---------------------------------------------------------------------------
+def real(note="From the real box. Priceless.", media="C"):
+    return (media, "?", 0, 0, note)
+
+
+CCM = "From the real box. CCM forever."
+
+DATA += [
+ ("Glad", "USA", 3, [
+   ("The Acapella Project", 1987, "Benson", "CCM", [real(CCM)]),
+ ]),
+ ("Petra", "USA", 8, [
+   ("War and Remembrance", 1986, "Star Song", "CCM",
+    [real(CCM), real("Second copy. Petra insurance.")]),
+   ("Beyond Belief", 1990, "Star Song", "CCM", [real(CCM)]),
+ ]),
+ ("Rich Mullins", "USA", 5, [
+   ("Winds of Heaven... Stuff of Earth", 1988, "Reunion", "CCM", [real(CCM)]),
+   ("Never Picture Perfect", 1989, "Reunion", "CCM", [real(CCM)]),
+   ("The World as Best as I Remember It", 1991, "Reunion", "CCM", [real(CCM)]),
+   ("A Liturgy, a Legacy & a Ragamuffin Band", 1993, "Reunion", "CCM", [real(CCM)]),
+ ]),
+ ("dc Talk", "USA", 7, [
+   ("Jesus Freak", 1995, "ForeFront", "CCM", [real(CCM)]),
+ ]),
+ ("The Imperials", "USA", 6, [
+   ("Stand by the Power", 1982, "DaySpring", "CCM", [real(CCM)]),
+ ]),
+ ("Amy Grant", "USA", 8, [
+   ("My Father's Eyes", 1979, "Myrrh", "CCM", [real(CCM)]),
+   ("Lead Me On", 1988, "Myrrh", "CCM", [real(CCM)]),
+ ]),
+ ("Sandi Patty", "USA", 7, [
+   ("Hymns Just for You", 0, "?", "CCM", [real(CCM)]),
+ ]),
+ ("Vangelis", "Greece", 5, [
+   ("Portraits (So Long Ago, So Clear)", 1981, "RCA", "Electronic", [real()]),
+ ]),
+ ("Bruce Cockburn", "Canada", 4, [
+   ("High Winds, White Sky", 1971, "True North", "Folk", [real()]),
+   ("Circles in the Stream", 1977, "True North", "Folk", [real()]),
+ ]),
+ ("Gloria Estefan", "USA", 8, [
+   ("Mi Tierra", 1993, "Epic", "Latin Pop", [real()]),
+ ]),
+ ("Phil Keaggy", "USA", 5, [
+   ("Beyond Nature", 1981, "Sparrow", "CCM", [real(CCM)]),
+   ("Town to Town", 1983, "Sparrow", "CCM", [real(CCM)]),
+ ]),
+ ("Billy Joel", "USA", 4, [
+   ("Greatest Hits Volume I & II", 1985, "Columbia", "Rock", [real()]),
+ ]),
+ ("Seal", "UK", 1, [
+   ("Seal", 0, "?", "Soul", [real()]),
+ ]),
+ ("Chicago", "USA", 5, [
+   ("Chicago 17", 1984, "Warner Bros.", "Rock", [real()]),
+ ]),
+ ("John Williams", "USA", 2, [
+   ("Star Wars (Original Soundtrack)", 1977, "20th Century", "Soundtrack", [real()]),
+   ("Return of the Jedi (Soundtrack)", 1983, "RSO", "Soundtrack", [real()]),
+ ]),
+ ("Yello", "Switzerland", 3, [
+   ("Zebra", 1994, "Mercury", "Electronic", [real()]),
+ ]),
+ ("Gowan", "Canada", 6, [
+   ("Strange Animal", 1985, "Columbia", "Rock", [real("From the real box. Not that strange, eh.")]),
+ ]),
+ ("Sting", "UK", 4, [
+   ("The Dream of the Blue Turtles", 1985, "A&M", "Pop", [real()]),
+   ("...Nothing Like the Sun", 1987, "A&M", "Pop", [real()]),
+ ]),
+ ("Malcolm McLaren", "UK", 8, [
+   ("Fans", 1984, "Virgin", "Opera Pop", [real("From the real box. Opera, remixed.")]),
+ ]),
+ ("David Foster", "Canada", 3, [
+   ("The Symphony Sessions", 1988, "Atlantic", "Instrumental", [real()]),
+ ]),
+ ("Hall & Oates", "USA", 9, [
+   ("Big Bam Boom", 1984, "RCA", "Pop", [real()]),
+ ]),
+ ("Level 42", "UK", 7, [
+   ("World Machine", 1985, "Polydor", "Jazz Funk", [real()]),
+ ]),
+ ("Howard Jones", "UK", 10, [
+   ("The Best of Howard Jones", 1993, "Elektra", "Synthpop", [real()]),
+ ]),
+ ("Queen", "UK", 9, [
+   ("Greatest Hits", 1981, "EMI", "Rock", [real()]),
+ ]),
+ ("Dmitri Shostakovich", "USSR", 2, [
+   ("Symphony No. 5", 0, "?", "Classical", [real("From the real box. Made in Canada.")]),
+ ]),
+ ("Gustav Mahler", "Austria", 3, [
+   ("Symphony No. 5", 0, "?", "Classical", [real()]),
+ ]),
+ ("Yes", "UK", 8, [
+   ("90125", 1983, "Atco", "Prog Rock", [real()]),
+ ]),
+ ("Elvis Presley", "USA", 10, [
+   ("Elvis' Gold Records", 0, "RCA", "Rock and Roll", [real("From the real box. The King.")]),
+ ]),
+ ("Various Artists", "Various", 0, [
+   ("Beverly Hills Cop (Soundtrack)", 1984, "MCA", "Soundtrack", [real()]),
+   ("Jesus Christ Superstar (Soundtrack)", 1973, "MCA", "Soundtrack", [real("From the real box. Twin-pack tape.")]),
+   ("Les Miserables (Broadway Album)", 1987, "Geffen", "Musical", [real()]),
+   ("Personal Worship 2", 0, "RPI", "Worship", [real(CCM)]),
+ ]),
+ ("Trooper", "Canada", 8, [
+   ("Hot Shots", 1979, "MCA", "Rock", [real("From the real box. Raise a Little Hell.")]),
+ ]),
+ ("Michael W. Smith", "USA", 7, [
+   ("The Big Picture", 1986, "Reunion", "CCM", [real(CCM)]),
+ ]),
+ ("The Praise Band", "USA", 3, [
+   ("You Are So Faithful", 0, "Maranatha! Music", "Worship", [real(CCM)]),
+   ("Jesus, Mighty God", 0, "Maranatha! Music", "Worship", [real(CCM)]),
+   ("Everlasting (Praise Band 3)", 0, "Maranatha! Music", "Worship", [real(CCM)]),
+ ]),
+ ("Langley Vineyard", "Canada", 3, [
+   ("Changed by Your Glory", 0, "?", "Worship", [real(CCM)]),
+ ]),
+ ("The Archers", "USA", 5, [
+   ("At Their Very Best", 0, "Light", "CCM", [real(CCM)]),
+ ]),
+ ("Carman", "USA", 6, [
+   ("Addicted to Jesus", 1988, "Benson", "CCM", [real(CCM)]),
+ ]),
+ ("Don Moen", "USA", 4, [
+   ("Worship with Don Moen", 0, "Hosanna! Music", "Worship", [real(CCM)]),
+ ]),
+ ("Warren Halstrom", "USA", 3, [
+   ("Friends Thru the Fire", 0, "Image 7", "CCM", [real(CCM)]),
+ ]),
+ ("John Michael Talbot", "USA", 2, [
+   ("The Regathering", 1987, "Sparrow", "CCM", [real(CCM)]),
+ ]),
+ ("Glen Garrett", "USA", 3, [
+   ("It Is Written", 0, "Greentree", "CCM", [real(CCM)]),
+ ]),
+ ("Johnny Markin", "USA", 3, [
+   ("The Call Home", 0, "?", "CCM", [real(CCM)]),
+ ]),
+ ("Mickey & Becki Moore", "USA", 3, [
+   ("Love Song for Number 2", 0, "Image 7", "CCM", [real(CCM)]),
+ ]),
+ ("The Plankerdown Band", "USA", 3, [
+   ("The Jig Is Up", 0, "?", "Folk", [real()]),
+ ]),
+ ("White Heart", "USA", 7, [
+   ("Highlands", 0, "Sparrow", "CCM", [real(CCM)]),
+   ("Tales of Wonder", 0, "Sparrow", "CCM", [real(CCM)]),
+   ("Power House", 0, "Sparrow", "CCM", [real(CCM)]),
+ ]),
+ ("Ennio Morricone", "Italy", 3, [
+   ("The Mission (Soundtrack)", 1986, "Virgin", "Soundtrack", [real()]),
+ ]),
+ ("Thompson Twins", "UK", 9, [
+   ("Into the Gap", 1984, "Arista", "Synthpop", [real()]),
+ ]),
+ ("Ian Thomas", "Canada", 5, [
+   ("Levity", 0, "?", "Rock", [real("From the real box. Canadian dad-rock.")]),
+ ]),
+ ("Nik Kershaw", "UK", 9, [
+   ("Radio Musicola", 1986, "MCA", "Pop", [real()]),
+ ]),
+ ("Walk on Water", "USA", 5, [
+   ("Walk on Water", 0, "Alarma", "CCM", [real(CCM)]),
+ ]),
+ ("Paul Janz", "?", 5, [
+   ("Trust", 0, "?", "CCM", [real(CCM)]),
+ ]),
+ ("Rob Frazier", "USA", 5, [
+   ("Retrospect", 0, "?", "CCM", [real(CCM)]),
+ ]),
+ ("Stanley Fisher, Ph.D.", "USA", 1, [
+   ("Discovering the Power of Self-Hypnosis", 0, "?", "Self-Help", [real("Real box. You are getting sleepy.")]),
+ ]),
+ ("Stephen R. Covey", "USA", 1, [
+   ("Getting the Most Out of Your 7 Habits", 0, "?", "Self-Help", [real("From the real box. Be proactive!")]),
+ ]),
+
+ # --- more copies/albums for artists already on the shelf ---------------
+ ("Honeymoon Suite", "Canada", 9, [
+   ("The Big Prize", 1985, "Warner Bros.", "Hard Rock", [real("The tape. The LP is a separate story.")]),
+ ]),
+ ("Kim Mitchell", "Canada", 7, [
+   ("Rockland", 1989, "Alert", "Rock", [real()]),
+ ]),
+ ("Phil Collins", "UK", 1, [
+   ("...But Seriously", 1989, "Atlantic", "Pop", [real()]),
+ ]),
+ ("The Police", "UK", 6, [
+   ("Zenyatta Mondatta", 1980, "A&M", "Rock", [real()]),
+   ("Every Breath You Take: The Singles", 1986, "A&M", "Rock", [real()]),
+ ]),
+ ("The Human League", "UK", 10, [
+   ("Dare", 1981, "Virgin", "Synthpop", [real("The tape copy of Dare. Obviously.")]),
+   ("Fascination!", 1983, "Virgin", "Synthpop", [real()]),
+   ("Crash", 1986, "Virgin", "Synthpop", [real()]),
+ ]),
+]

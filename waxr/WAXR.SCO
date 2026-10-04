@@ -138,6 +138,8 @@ WORKING-STORAGE SECTION.
     01  WS-BUMP              PIC 9(4) COMP VALUE 0.
     01  WS-PAGE-SIZE         PIC 9(4) COMP VALUE 20.
     01  WS-QUITLIST          PIC X(1) VALUE "N".
+    01  WS-YEAR-TXT          PIC X(4).
+    01  WS-PRICE-TXT         PIC X(10).
     01  WS-J                 PIC 9(2) COMP.
 
 * IDs of the holdings listed on screen, for "sell out"
@@ -303,9 +305,18 @@ FETCH-ALBUM-OF-ARTIST.
     END-IF.
 
 SHOW-ALBUM-LINE.
-    MOVE H-RELEASE-YEAR TO WS-IN-YEAR.
-    DISPLAY "      " WS-IN-YEAR "  " H-ALBUM-TITLE
+    PERFORM ALBUM-YEAR-TEXT.
+    DISPLAY "      " WS-YEAR-TXT "  " H-ALBUM-TITLE
             " [" H-RECORD-LABEL "]".
+
+* Release year as text; ???? when it is not known
+ALBUM-YEAR-TEXT.
+    IF H-RELEASE-YEAR = 0
+        MOVE "????" TO WS-YEAR-TXT
+    ELSE
+        MOVE H-RELEASE-YEAR TO WS-IN-YEAR
+        MOVE WS-IN-YEAR TO WS-YEAR-TXT
+    END-IF.
 
 * Lists the copies of the album whose id is in H-ALBUM-ID
 SHOW-COPIES.
@@ -342,11 +353,21 @@ FETCH-HOLDING.
 SHOW-COPY-LINE.
     PERFORM DECODE-MEDIA.
     PERFORM DECODE-GRADE.
-    COMPUTE WS-DOLLARS = H-PRICE-CENTS / 100.
-    MOVE WS-DOLLARS TO WS-ED-PRICE.
-    MOVE H-BOUGHT-YEAR TO WS-IN-YEAR.
+    IF H-PRICE-CENTS = 0
+        MOVE " priceless" TO WS-PRICE-TXT
+    ELSE
+        COMPUTE WS-DOLLARS = H-PRICE-CENTS / 100
+        MOVE WS-DOLLARS TO WS-ED-PRICE
+        MOVE WS-ED-PRICE TO WS-PRICE-TXT
+    END-IF.
+    IF H-BOUGHT-YEAR = 0
+        MOVE "????" TO WS-YEAR-TXT
+    ELSE
+        MOVE H-BOUGHT-YEAR TO WS-IN-YEAR
+        MOVE WS-IN-YEAR TO WS-YEAR-TXT
+    END-IF.
     DISPLAY "            - " WS-MEDIA-NAME " " H-GRADE " "
-            WS-ED-PRICE " (" WS-IN-YEAR ") " WS-GRADE-NAME.
+            WS-PRICE-TXT " (" WS-YEAR-TXT ") " WS-GRADE-NAME.
     IF H-HOLDING-NOTES NOT = SPACES
         DISPLAY "              " QUOTE H-HOLDING-NOTES QUOTE
     END-IF.
@@ -512,9 +533,8 @@ FETCH-ANY-ALBUM.
     END-IF.
 
 SHOW-ALBUM-AND-ARTIST.
-    MOVE H-RELEASE-YEAR TO WS-IN-YEAR.
-    MOVE WS-IN-YEAR TO WS-ED4.
-    DISPLAY "  " H-ALBUM-TITLE " (" WS-ED4 ") by " H-ARTIST-NAME.
+    PERFORM ALBUM-YEAR-TEXT.
+    DISPLAY "  " H-ALBUM-TITLE " (" WS-YEAR-TXT ") by " H-ARTIST-NAME.
 
 *---------------------------------------------------------------
 * 3) Needle drop: find albums by title fragment
