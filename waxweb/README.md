@@ -5,6 +5,8 @@ OpenVMS VAX.  The VAX program is untouched menu-driven terminal software; this s
 telnet, starts it, and *types at its menus like a person*, turning the text screens it prints into JSON
 for the browser.  (The UI even has a live "VAX terminal" drawer showing the screens being scraped.)
 
+![WAX & TAPE web UI: synthwave collection tracker with stats, filters and artist cards](screenshot.png)
+
 ```
  browser  <--HTTP-->  waxweb.py  <--telnet-->  VAX: @RUN_WAXR  ->  COBOL + embedded SQL  ->  Rdb
  (static SPA)        (Python 3.7, stdlib only)      (menu screens, fixed-width text)

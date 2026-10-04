@@ -170,6 +170,8 @@ to the VAX over telnet, starts `@RUN_WAXR`, and *types at its menus like a perso
 answers the "Is it this one? (Y/N)" pickers by exact match, parses the fixed-width screens into JSON, and
 double-checks before it sells anything.
 
+[![WAX & TAPE web UI](waxweb/screenshot.png)](waxweb)
+
 ```
  browser  <--HTTP-->  waxweb.py  <--telnet-->  VAX: @RUN_WAXR  ->  COBOL + embedded SQL  ->  Rdb
 ```
