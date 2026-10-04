@@ -141,6 +141,9 @@ $ @BUILD_WAXR REBUILD    ! start over with a pristine collection
 | `WAXR.SCO` | the program (precompiled with `SQL$PRE/COBOL`) |
 | `TEST_WAXR.COM`, `TESTIN.TXT` | run the program on canned input; output goes to `TESTOUT.LOG` |
 
+Long listings (roll call, artist lookup, album find) are paged: every 20 lines the program shows
+`-- more -- (Enter = next page, Q = stop)`.
+
 An *album* is the music; a *holding* is a physical thing you own, so owning Rio on both vinyl and
 tape is one album with two holdings. Searches are case-insensitive partial matches (`dur` finds
 Duran Duran). Hair scores are the artists' (a 10 is visible from orbit).

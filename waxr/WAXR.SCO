@@ -134,6 +134,10 @@ WORKING-STORAGE SECTION.
         05  FILLER           PIC 9(6).
         05  WS-HSEC          PIC 9(2).
     01  WS-QIDX              PIC 9(2) COMP.
+    01  WS-LINES             PIC 9(4) COMP VALUE 0.
+    01  WS-BUMP              PIC 9(4) COMP VALUE 0.
+    01  WS-PAGE-SIZE         PIC 9(4) COMP VALUE 20.
+    01  WS-QUITLIST          PIC X(1) VALUE "N".
     01  WS-J                 PIC 9(2) COMP.
 
 * IDs of the holdings listed on screen, for "sell out"
@@ -229,9 +233,11 @@ MENU-LOOP.
 *---------------------------------------------------------------
 LIST-ALL.
     MOVE ZERO TO WS-N.
+    MOVE ZERO TO WS-LINES.
+    MOVE "N" TO WS-QUITLIST.
     PERFORM OPEN-ARTISTS.
     PERFORM FETCH-ARTIST.
-    PERFORM UNTIL WS-EOF = "Y"
+    PERFORM UNTIL WS-EOF = "Y" OR WS-QUITLIST = "Y"
         PERFORM SHOW-ARTIST-FULL
         ADD 1 TO WS-N
         PERFORM FETCH-ARTIST
@@ -262,18 +268,27 @@ FETCH-ARTIST.
     END-IF.
 
 SHOW-ARTIST-FULL.
-    PERFORM MAKE-HAIR-BAR.
-    DISPLAY " ".
-    DISPLAY "  * " H-ARTIST-NAME " (" H-ORIGIN ")  hair " WS-HAIR-BAR.
-    MOVE "N" TO WS-EOF2.
-    EXEC SQL OPEN C_ALBUMS END-EXEC.
-    PERFORM FETCH-ALBUM-OF-ARTIST.
-    PERFORM UNTIL WS-EOF2 = "Y"
-        PERFORM SHOW-ALBUM-LINE
-        PERFORM SHOW-COPIES
+    MOVE 2 TO WS-BUMP.
+    PERFORM NEED-LINES.
+    IF WS-QUITLIST NOT = "Y"
+        PERFORM MAKE-HAIR-BAR
+        DISPLAY " "
+        DISPLAY "  * " H-ARTIST-NAME " (" H-ORIGIN ")  hair "
+                WS-HAIR-BAR
+        MOVE "N" TO WS-EOF2
+        EXEC SQL OPEN C_ALBUMS END-EXEC
         PERFORM FETCH-ALBUM-OF-ARTIST
-    END-PERFORM.
-    EXEC SQL CLOSE C_ALBUMS END-EXEC.
+        PERFORM UNTIL WS-EOF2 = "Y" OR WS-QUITLIST = "Y"
+            MOVE 1 TO WS-BUMP
+            PERFORM NEED-LINES
+            IF WS-QUITLIST NOT = "Y"
+                PERFORM SHOW-ALBUM-LINE
+                PERFORM SHOW-COPIES
+                PERFORM FETCH-ALBUM-OF-ARTIST
+            END-IF
+        END-PERFORM
+        EXEC SQL CLOSE C_ALBUMS END-EXEC
+    END-IF.
 
 FETCH-ALBUM-OF-ARTIST.
     EXEC SQL FETCH C_ALBUMS INTO :H-ALBUM-ID, :H-ALBUM-TITLE,
@@ -297,9 +312,17 @@ SHOW-COPIES.
     MOVE "N" TO WS-EOF3.
     EXEC SQL OPEN C_HOLDINGS END-EXEC.
     PERFORM FETCH-HOLDING.
-    PERFORM UNTIL WS-EOF3 = "Y"
-        PERFORM SHOW-COPY-LINE
-        PERFORM FETCH-HOLDING
+    PERFORM UNTIL WS-EOF3 = "Y" OR WS-QUITLIST = "Y"
+        IF H-HOLDING-NOTES = SPACES
+            MOVE 1 TO WS-BUMP
+        ELSE
+            MOVE 2 TO WS-BUMP
+        END-IF
+        PERFORM NEED-LINES
+        IF WS-QUITLIST NOT = "Y"
+            PERFORM SHOW-COPY-LINE
+            PERFORM FETCH-HOLDING
+        END-IF
     END-PERFORM.
     EXEC SQL CLOSE C_HOLDINGS END-EXEC.
 
@@ -401,9 +424,11 @@ LOOKUP-ARTIST.
             WITH NO ADVANCING.
     PERFORM GET-SEARCH.
     MOVE ZERO TO WS-N.
+    MOVE ZERO TO WS-LINES.
+    MOVE "N" TO WS-QUITLIST.
     PERFORM OPEN-ARTISTS.
     PERFORM FETCH-ARTIST.
-    PERFORM UNTIL WS-EOF = "Y"
+    PERFORM UNTIL WS-EOF = "Y" OR WS-QUITLIST = "Y"
         MOVE H-ARTIST-NAME TO WS-TARGET
         PERFORM MATCH-CHECK
         IF WS-MATCH = "Y"
@@ -498,16 +523,22 @@ FIND-ALBUM.
     DISPLAY "  Title (or chunk, Enter = all): " WITH NO ADVANCING.
     PERFORM GET-SEARCH.
     MOVE ZERO TO WS-N.
+    MOVE ZERO TO WS-LINES.
+    MOVE "N" TO WS-QUITLIST.
     MOVE "N" TO WS-EOF.
     EXEC SQL OPEN C_ALLALBUMS END-EXEC.
     PERFORM FETCH-ANY-ALBUM.
-    PERFORM UNTIL WS-EOF = "Y"
+    PERFORM UNTIL WS-EOF = "Y" OR WS-QUITLIST = "Y"
         MOVE H-ALBUM-TITLE TO WS-TARGET
         PERFORM MATCH-CHECK
         IF WS-MATCH = "Y"
             ADD 1 TO WS-N
-            PERFORM SHOW-ALBUM-AND-ARTIST
-            PERFORM SHOW-COPIES
+            MOVE 1 TO WS-BUMP
+            PERFORM NEED-LINES
+            IF WS-QUITLIST NOT = "Y"
+                PERFORM SHOW-ALBUM-AND-ARTIST
+                PERFORM SHOW-COPIES
+            END-IF
         END-IF
         PERFORM FETCH-ANY-ALBUM
     END-PERFORM.
@@ -756,6 +787,25 @@ SHOW-STATS.
         DISPLAY "  More tape than vinyl. Walkman gang rules."
     ELSE
         DISPLAY "  More vinyl than tape. Audiophile alert."
+    END-IF.
+
+*---------------------------------------------------------------
+* Pager.  Set WS-BUMP to the number of lines about to be printed and
+* PERFORM NEED-LINES first.  If they will not fit on the page it asks
+* the user; a "Q" sets WS-QUITLIST so the listing loops stop.
+*---------------------------------------------------------------
+NEED-LINES.
+    IF WS-QUITLIST NOT = "Y"
+        IF WS-LINES + WS-BUMP > WS-PAGE-SIZE
+            DISPLAY "  -- more -- (Enter = next page, Q = stop): "
+                    WITH NO ADVANCING
+            ACCEPT WS-ANSWER
+            IF WS-ANSWER = "Q" OR WS-ANSWER = "q"
+                MOVE "Y" TO WS-QUITLIST
+            END-IF
+            MOVE ZERO TO WS-LINES
+        END-IF
+        ADD WS-BUMP TO WS-LINES
     END-IF.
 
 *---------------------------------------------------------------
