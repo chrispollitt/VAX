@@ -229,6 +229,10 @@ MENU-LOOP.
         WHEN OTHER
             DISPLAY "  That is not on the tracklist."
     END-EVALUATE.
+*   End the transaction after every menu action, including the read-only
+*   ones, so an idle session (a person at the menu, or the web front end)
+*   never sits on Rdb locks and blocks everyone else.
+    EXEC SQL COMMIT END-EXEC.
 
 *---------------------------------------------------------------
 * Roll call: artists -> albums -> holdings
@@ -307,7 +311,7 @@ FETCH-ALBUM-OF-ARTIST.
 SHOW-ALBUM-LINE.
     PERFORM ALBUM-YEAR-TEXT.
     DISPLAY "      " WS-YEAR-TXT "  " H-ALBUM-TITLE
-            " [" H-RECORD-LABEL "]".
+            " [" H-RECORD-LABEL "] " H-GENRE.
 
 * Release year as text; ???? when it is not known
 ALBUM-YEAR-TEXT.
