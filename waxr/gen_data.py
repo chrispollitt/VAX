@@ -429,7 +429,7 @@ DATA += [
    ("...Nothing Like the Sun", 1987, "A&M", "Pop", [real()]),
  ]),
  ("Malcolm McLaren", "UK", 8, [
-   ("Fans", 1984, "Virgin", "Opera Pop", [real("From the real box. Opera, remixed.")]),
+   ("Fans", 1984, "Virgin", "Opera Pop", [real("Won as 10th caller on the request line")]),
  ]),
  ("David Foster", "Canada", 3, [
    ("The Symphony Sessions", 1988, "Atlantic", "Instrumental", [real()]),

@@ -373,7 +373,7 @@ INSERT INTO HOLDING VALUES (123, 105, 'C', '?', 0, 0, 'From the real box. Pricel
 
 INSERT INTO ARTIST VALUES (72, 'Malcolm McLaren', 'UK', 8);
 INSERT INTO ALBUM VALUES (106, 72, 'Fans', 1984, 'Virgin', 'Opera Pop');
-INSERT INTO HOLDING VALUES (124, 106, 'C', '?', 0, 0, 'From the real box. Opera, remixed.');
+INSERT INTO HOLDING VALUES (124, 106, 'C', '?', 0, 0, 'Won as 10th caller on the request line');
 
 INSERT INTO ARTIST VALUES (73, 'David Foster', 'Canada', 3);
 INSERT INTO ALBUM VALUES (107, 73, 'The Symphony Sessions', 1988, 'Atlantic', 'Instrumental');
