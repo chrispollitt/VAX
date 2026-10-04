@@ -95,7 +95,9 @@ Two environment variables / logicals, handy for testing and not needed for play:
 ## WAXR (WAX & TAPE)
 
 A cheeky collection tracker for 80s records and tapes: **DEC COBOL** with embedded SQL on
-**DEC Rdb V6.0**. 31 artists, 45 albums and 58 LPs, cassettes and 12" singles come pre-loaded.
+**DEC Rdb V6.0**. 53 artists, 72 albums and 87 LPs, cassettes and 12" singles come pre-loaded -
+22 of those artists are Canadian (Rush, Bryan Adams, Leonard Cohen, Platinum Blonde, the Hip...),
+so the stats screen reports your **CanCon** share against the CRTC's 35% radio quota. Sorry.
 
 ```
   ================================================

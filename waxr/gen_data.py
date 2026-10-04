@@ -218,4 +218,133 @@ DATA = [
      ("C", "VG ", 799, 1985, "Nice tape. Don't tell anyone."),
    ]),
  ]),
+
+ # ---- The True North strong and free ----------------------------------
+ ("Rush", "Canada", 7, [
+   ("Moving Pictures", 1981, "Anthem", "Prog Rock", [
+     ("L", "VG+", 899, 1982, "Tom Sawyer in the basement. Geddy!"),
+   ]),
+   ("Signals", 1982, "Anthem", "Prog Rock", [
+     ("C", "VG ", 799, 1983, "New World Man. Willowdale pride."),
+   ]),
+   ("Grace Under Pressure", 1984, "Anthem", "Prog Rock", [
+     ("L", "NM ", 999, 1984, "Red Sector A. Very Cold War, eh."),
+   ]),
+ ]),
+ ("Bryan Adams", "Canada", 5, [
+   ("Cuts Like a Knife", 1983, "A&M", "Rock", [
+     ("C", "VG ", 799, 1984, "Straight from the heart, via Vancouver"),
+   ]),
+   ("Reckless", 1984, "A&M", "Rock", [
+     ("L", "VG+", 899, 1985, "Best summer of my life. Mostly '85."),
+     ("C", "G  ", 799, 1985, "School bus tape. Wore it thin."),
+   ]),
+ ]),
+ ("Neil Young", "Canada", 3, [
+   ("Trans", 1982, "Geffen", "Experimental", [
+     ("L", "VG ", 899, 1983, "Vocoder. Confused the whole concert."),
+   ]),
+   ("Freedom", 1989, "Reprise", "Rock", [
+     ("C", "VG+", 899, 1989, "Rockin' in the Free World. Loud."),
+   ]),
+ ]),
+ ("Leonard Cohen", "Canada", 1, [
+   ("Various Positions", 1984, "Passport", "Folk", [
+     ("L", "VG+", 899, 1985, "Hallelujah. Little did we know."),
+   ]),
+   ("I'm Your Man", 1988, "Columbia", "Art Pop", [
+     ("C", "VG ", 799, 1989, "First We Take Manhattan. Gravel and hat."),
+   ]),
+ ]),
+ ("Joni Mitchell", "Canada", 4, [
+   ("Wild Things Run Fast", 1982, "Geffen", "Pop", [
+     ("L", "VG ", 899, 1983, "Prairie girl, big city voice."),
+   ]),
+ ]),
+ ("Anne Murray", "Canada", 5, [
+   ("A Little Good News", 1983, "Capitol", "Country Pop", [
+     ("L", "VG ", 899, 1983, "Mom's copy. Mom's rules."),
+   ]),
+ ]),
+ ("k.d. lang", "Canada", 3, [
+   ("Angel with a Lariat", 1987, "Sire", "Country", [
+     ("C", "VG ", 799, 1988, "Consort, Alberta's finest. Fight me."),
+   ]),
+ ]),
+ ("Corey Hart", "Canada", 6, [
+   ("First Offense", 1983, "Aquarius", "Pop Rock", [
+     ("C", "VG ", 799, 1984, "Sunglasses at Night. Wore them. Indoors."),
+   ]),
+ ]),
+ ("Honeymoon Suite", "Canada", 9, [
+   ("The Big Prize", 1985, "Warner Bros.", "Hard Rock", [
+     ("L", "VG ", 899, 1986, "New Girl Now. Niagara Falls anthem."),
+   ]),
+ ]),
+ ("Platinum Blonde", "Canada", 10, [
+   ("Standing in the Dark", 1983, "CBS", "New Wave", [
+     ("L", "VG+", 899, 1984, "Not platinum. Very, very blonde."),
+   ]),
+ ]),
+ ("Loverboy", "Canada", 8, [
+   ("Get Lucky", 1981, "Columbia", "Rock", [
+     ("L", "VG ", 899, 1982, "Working for the weekend. Calgary-style."),
+   ]),
+ ]),
+ ("Glass Tiger", "Canada", 8, [
+   ("The Thin Red Line", 1986, "Capitol", "Pop Rock", [
+     ("C", "VG ", 799, 1986, "Don't Forget Me. We didn't."),
+   ]),
+ ]),
+ ("The Tragically Hip", "Canada", 4, [
+   ("Up to Here", 1989, "MCA", "Rock", [
+     ("C", "VG+", 799, 1989, "Blow at High Dough. Kingston forever."),
+   ]),
+ ]),
+ ("Blue Rodeo", "Canada", 4, [
+   ("Outskirts", 1987, "WEA", "Country Rock", [
+     ("L", "VG+", 899, 1988, "Try. Cried at the cottage."),
+   ]),
+ ]),
+ ("Triumph", "Canada", 8, [
+   ("Allied Forces", 1981, "RCA", "Hard Rock", [
+     ("L", "VG ", 899, 1982, "Magic Power. Air-guitar certified."),
+   ]),
+ ]),
+ ("Kim Mitchell", "Canada", 7, [
+   ("Akimbo Alogo", 1984, "Anthem", "Rock", [
+     ("C", "VG ", 799, 1985, "Go for a Soda. Cottage-country classic."),
+   ]),
+ ]),
+ ("Cowboy Junkies", "Canada", 2, [
+   ("The Trinity Session", 1988, "RCA", "Alt Country", [
+     ("C", "NM ", 899, 1989, "One church, one mic. Sweet Jane."),
+   ]),
+ ]),
+ ("Men Without Hats", "Canada", 6, [
+   ("Rhythm of Youth", 1982, "Statik", "Synthpop", [
+     ("L", "VG ", 899, 1983, "The Safety Dance. Yes, we danced."),
+     ("S", "VG ", 599, 1983, "Safety Dance 12in. Extra hand-waving."),
+   ]),
+ ]),
+ ("Martha and the Muffins", "Canada", 5, [
+   ("Metro Music", 1980, "Dindisc", "New Wave", [
+     ("L", "VG ", 899, 1981, "Echo Beach. Far away in time."),
+   ]),
+ ]),
+ ("Spoons", "Canada", 6, [
+   ("Arias & Symphonies", 1982, "Ready", "New Wave", [
+     ("L", "VG ", 899, 1983, "Nova Heart. Burlington, represent."),
+   ]),
+ ]),
+ ("Parachute Club", "Canada", 9, [
+   ("Parachute Club", 1983, "Current", "Dance Pop", [
+     ("L", "VG ", 899, 1984, "Rise Up. Toronto, 1983."),
+   ]),
+ ]),
+ ("Alannah Myles", "Canada", 9, [
+   ("Alannah Myles", 1989, "Atlantic", "Rock", [
+     ("C", "VG ", 799, 1989, "Black Velvet. Elvis is in the room."),
+   ]),
+ ]),
 ]

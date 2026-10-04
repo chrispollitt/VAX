@@ -123,6 +123,9 @@ WORKING-STORAGE SECTION.
     01  WS-NUM-12IN          PIC 9(4) COMP.
     01  WS-NUM-HOLD          PIC 9(4) COMP.
     01  WS-NUM-DOUBLES       PIC 9(4) COMP.
+    01  WS-NUM-CAN           PIC 9(4) COMP.
+    01  WS-CAN-PCT           PIC 9(3) COMP.
+    01  WS-ED-PCT            PIC ZZ9.
     01  WS-HAIR-BAR          PIC X(10).
     01  WS-MEDIA-NAME        PIC X(12).
     01  WS-GRADE-NAME        PIC X(36).
@@ -155,8 +158,16 @@ WORKING-STORAGE SECTION.
             "Somewhere, a pencil is still rewinding a cassette.".
         05  FILLER PIC X(60) VALUE
             "Fun fact: the 12-inch remix is never shorter.".
+        05  FILLER PIC X(60) VALUE
+            "Sorry! (We say that a lot. It is in the database.)".
+        05  FILLER PIC X(60) VALUE
+            "Hockey Night in Canada starts at 7. The tape can wait.".
+        05  FILLER PIC X(60) VALUE
+            "Brought to you by CanCon. The CRTC approves this message.".
+        05  FILLER PIC X(60) VALUE
+            "Double-double and a Rush album: a perfect day, eh.".
     01  QUIP-R REDEFINES QUIP-TABLE.
-        05  QUIP             PIC X(60) OCCURS 8 TIMES.
+        05  QUIP             PIC X(60) OCCURS 12 TIMES.
 
 PROCEDURE DIVISION.
 MAIN-PARA.
@@ -177,11 +188,12 @@ SHOW-BANNER.
     DISPLAY "   the totally tubular 80s collection tracker".
     DISPLAY "   (powered by DEC Rdb, because spreadsheets are".
     DISPLAY "    for people who never owned a perm)".
+    DISPLAY "   Proudly Canadian content. Sorry for the hair.".
     DISPLAY "  ================================================".
 
 SHOW-QUIP.
     ACCEPT WS-TIME FROM TIME.
-    DIVIDE WS-HSEC BY 8 GIVING WS-J REMAINDER WS-QIDX.
+    DIVIDE WS-HSEC BY 12 GIVING WS-J REMAINDER WS-QIDX.
     ADD 1 TO WS-QIDX.
     DISPLAY "  -- " QUIP (WS-QIDX).
 
@@ -685,6 +697,9 @@ SHOW-STATS.
         WHERE (SELECT COUNT(*) FROM HOLDING H
                WHERE H.ALBUM_ID = A.ALBUM_ID) > 1 END-EXEC.
     MOVE H-COUNT TO WS-NUM-DOUBLES.
+    EXEC SQL SELECT COUNT(*) INTO :H-COUNT FROM ARTIST
+        WHERE ORIGIN = 'Canada' END-EXEC.
+    MOVE H-COUNT TO WS-NUM-CAN.
     EXEC SQL SELECT SUM(PRICE_CENTS) INTO :H-SUM:H-IND
         FROM HOLDING END-EXEC.
     IF H-IND < 0 MOVE ZERO TO H-SUM.
@@ -711,6 +726,18 @@ SHOW-STATS.
     COMPUTE WS-DOLLARS = H-SUM / 100.
     MOVE WS-DOLLARS TO WS-ED-PRICE.
     DISPLAY "  Total spent ............ " WS-ED-PRICE.
+    MOVE WS-NUM-CAN TO WS-ED4.
+    DISPLAY "  Canadian artists (eh?) . " WS-ED4.
+    IF WS-NUM-ARTISTS > 0
+        COMPUTE WS-CAN-PCT = WS-NUM-CAN * 100 / WS-NUM-ARTISTS
+        MOVE WS-CAN-PCT TO WS-ED-PCT
+        DISPLAY "  CanCon share ........... " WS-ED-PCT " %"
+        IF WS-CAN-PCT NOT < 35
+            DISPLAY "  CanCon verdict: quota met. The CRTC salutes you."
+        ELSE
+            DISPLAY "  CanCon verdict: under the CRTC's 35%. Sorry."
+        END-IF
+    END-IF.
     IF WS-NUM-ARTISTS > 0
         COMPUTE WS-AVG-HAIR = WS-HAIR-TOTAL / WS-NUM-ARTISTS
         MOVE WS-AVG-HAIR TO WS-ED-HAIR

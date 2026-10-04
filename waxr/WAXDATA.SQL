@@ -166,4 +166,104 @@ INSERT INTO ARTIST VALUES (31, 'Phil Collins', 'UK', 1);
 INSERT INTO ALBUM VALUES (45, 31, 'No Jacket Required', 1985, 'Atlantic', 'Pop');
 INSERT INTO HOLDING VALUES (58, 45, 'C', 'VG', 799, 1985, 'Nice tape. Don''t tell anyone.');
 
+INSERT INTO ARTIST VALUES (32, 'Rush', 'Canada', 7);
+INSERT INTO ALBUM VALUES (46, 32, 'Moving Pictures', 1981, 'Anthem', 'Prog Rock');
+INSERT INTO HOLDING VALUES (59, 46, 'L', 'VG+', 899, 1982, 'Tom Sawyer in the basement. Geddy!');
+INSERT INTO ALBUM VALUES (47, 32, 'Signals', 1982, 'Anthem', 'Prog Rock');
+INSERT INTO HOLDING VALUES (60, 47, 'C', 'VG', 799, 1983, 'New World Man. Willowdale pride.');
+INSERT INTO ALBUM VALUES (48, 32, 'Grace Under Pressure', 1984, 'Anthem', 'Prog Rock');
+INSERT INTO HOLDING VALUES (61, 48, 'L', 'NM', 999, 1984, 'Red Sector A. Very Cold War, eh.');
+
+INSERT INTO ARTIST VALUES (33, 'Bryan Adams', 'Canada', 5);
+INSERT INTO ALBUM VALUES (49, 33, 'Cuts Like a Knife', 1983, 'A&M', 'Rock');
+INSERT INTO HOLDING VALUES (62, 49, 'C', 'VG', 799, 1984, 'Straight from the heart, via Vancouver');
+INSERT INTO ALBUM VALUES (50, 33, 'Reckless', 1984, 'A&M', 'Rock');
+INSERT INTO HOLDING VALUES (63, 50, 'L', 'VG+', 899, 1985, 'Best summer of my life. Mostly ''85.');
+INSERT INTO HOLDING VALUES (64, 50, 'C', 'G', 799, 1985, 'School bus tape. Wore it thin.');
+
+INSERT INTO ARTIST VALUES (34, 'Neil Young', 'Canada', 3);
+INSERT INTO ALBUM VALUES (51, 34, 'Trans', 1982, 'Geffen', 'Experimental');
+INSERT INTO HOLDING VALUES (65, 51, 'L', 'VG', 899, 1983, 'Vocoder. Confused the whole concert.');
+INSERT INTO ALBUM VALUES (52, 34, 'Freedom', 1989, 'Reprise', 'Rock');
+INSERT INTO HOLDING VALUES (66, 52, 'C', 'VG+', 899, 1989, 'Rockin'' in the Free World. Loud.');
+
+INSERT INTO ARTIST VALUES (35, 'Leonard Cohen', 'Canada', 1);
+INSERT INTO ALBUM VALUES (53, 35, 'Various Positions', 1984, 'Passport', 'Folk');
+INSERT INTO HOLDING VALUES (67, 53, 'L', 'VG+', 899, 1985, 'Hallelujah. Little did we know.');
+INSERT INTO ALBUM VALUES (54, 35, 'I''m Your Man', 1988, 'Columbia', 'Art Pop');
+INSERT INTO HOLDING VALUES (68, 54, 'C', 'VG', 799, 1989, 'First We Take Manhattan. Gravel and hat.');
+
+INSERT INTO ARTIST VALUES (36, 'Joni Mitchell', 'Canada', 4);
+INSERT INTO ALBUM VALUES (55, 36, 'Wild Things Run Fast', 1982, 'Geffen', 'Pop');
+INSERT INTO HOLDING VALUES (69, 55, 'L', 'VG', 899, 1983, 'Prairie girl, big city voice.');
+
+INSERT INTO ARTIST VALUES (37, 'Anne Murray', 'Canada', 5);
+INSERT INTO ALBUM VALUES (56, 37, 'A Little Good News', 1983, 'Capitol', 'Country Pop');
+INSERT INTO HOLDING VALUES (70, 56, 'L', 'VG', 899, 1983, 'Mom''s copy. Mom''s rules.');
+
+INSERT INTO ARTIST VALUES (38, 'k.d. lang', 'Canada', 3);
+INSERT INTO ALBUM VALUES (57, 38, 'Angel with a Lariat', 1987, 'Sire', 'Country');
+INSERT INTO HOLDING VALUES (71, 57, 'C', 'VG', 799, 1988, 'Consort, Alberta''s finest. Fight me.');
+
+INSERT INTO ARTIST VALUES (39, 'Corey Hart', 'Canada', 6);
+INSERT INTO ALBUM VALUES (58, 39, 'First Offense', 1983, 'Aquarius', 'Pop Rock');
+INSERT INTO HOLDING VALUES (72, 58, 'C', 'VG', 799, 1984, 'Sunglasses at Night. Wore them. Indoors.');
+
+INSERT INTO ARTIST VALUES (40, 'Honeymoon Suite', 'Canada', 9);
+INSERT INTO ALBUM VALUES (59, 40, 'The Big Prize', 1985, 'Warner Bros.', 'Hard Rock');
+INSERT INTO HOLDING VALUES (73, 59, 'L', 'VG', 899, 1986, 'New Girl Now. Niagara Falls anthem.');
+
+INSERT INTO ARTIST VALUES (41, 'Platinum Blonde', 'Canada', 10);
+INSERT INTO ALBUM VALUES (60, 41, 'Standing in the Dark', 1983, 'CBS', 'New Wave');
+INSERT INTO HOLDING VALUES (74, 60, 'L', 'VG+', 899, 1984, 'Not platinum. Very, very blonde.');
+
+INSERT INTO ARTIST VALUES (42, 'Loverboy', 'Canada', 8);
+INSERT INTO ALBUM VALUES (61, 42, 'Get Lucky', 1981, 'Columbia', 'Rock');
+INSERT INTO HOLDING VALUES (75, 61, 'L', 'VG', 899, 1982, 'Working for the weekend. Calgary-style.');
+
+INSERT INTO ARTIST VALUES (43, 'Glass Tiger', 'Canada', 8);
+INSERT INTO ALBUM VALUES (62, 43, 'The Thin Red Line', 1986, 'Capitol', 'Pop Rock');
+INSERT INTO HOLDING VALUES (76, 62, 'C', 'VG', 799, 1986, 'Don''t Forget Me. We didn''t.');
+
+INSERT INTO ARTIST VALUES (44, 'The Tragically Hip', 'Canada', 4);
+INSERT INTO ALBUM VALUES (63, 44, 'Up to Here', 1989, 'MCA', 'Rock');
+INSERT INTO HOLDING VALUES (77, 63, 'C', 'VG+', 799, 1989, 'Blow at High Dough. Kingston forever.');
+
+INSERT INTO ARTIST VALUES (45, 'Blue Rodeo', 'Canada', 4);
+INSERT INTO ALBUM VALUES (64, 45, 'Outskirts', 1987, 'WEA', 'Country Rock');
+INSERT INTO HOLDING VALUES (78, 64, 'L', 'VG+', 899, 1988, 'Try. Cried at the cottage.');
+
+INSERT INTO ARTIST VALUES (46, 'Triumph', 'Canada', 8);
+INSERT INTO ALBUM VALUES (65, 46, 'Allied Forces', 1981, 'RCA', 'Hard Rock');
+INSERT INTO HOLDING VALUES (79, 65, 'L', 'VG', 899, 1982, 'Magic Power. Air-guitar certified.');
+
+INSERT INTO ARTIST VALUES (47, 'Kim Mitchell', 'Canada', 7);
+INSERT INTO ALBUM VALUES (66, 47, 'Akimbo Alogo', 1984, 'Anthem', 'Rock');
+INSERT INTO HOLDING VALUES (80, 66, 'C', 'VG', 799, 1985, 'Go for a Soda. Cottage-country classic.');
+
+INSERT INTO ARTIST VALUES (48, 'Cowboy Junkies', 'Canada', 2);
+INSERT INTO ALBUM VALUES (67, 48, 'The Trinity Session', 1988, 'RCA', 'Alt Country');
+INSERT INTO HOLDING VALUES (81, 67, 'C', 'NM', 899, 1989, 'One church, one mic. Sweet Jane.');
+
+INSERT INTO ARTIST VALUES (49, 'Men Without Hats', 'Canada', 6);
+INSERT INTO ALBUM VALUES (68, 49, 'Rhythm of Youth', 1982, 'Statik', 'Synthpop');
+INSERT INTO HOLDING VALUES (82, 68, 'L', 'VG', 899, 1983, 'The Safety Dance. Yes, we danced.');
+INSERT INTO HOLDING VALUES (83, 68, 'S', 'VG', 599, 1983, 'Safety Dance 12in. Extra hand-waving.');
+
+INSERT INTO ARTIST VALUES (50, 'Martha and the Muffins', 'Canada', 5);
+INSERT INTO ALBUM VALUES (69, 50, 'Metro Music', 1980, 'Dindisc', 'New Wave');
+INSERT INTO HOLDING VALUES (84, 69, 'L', 'VG', 899, 1981, 'Echo Beach. Far away in time.');
+
+INSERT INTO ARTIST VALUES (51, 'Spoons', 'Canada', 6);
+INSERT INTO ALBUM VALUES (70, 51, 'Arias & Symphonies', 1982, 'Ready', 'New Wave');
+INSERT INTO HOLDING VALUES (85, 70, 'L', 'VG', 899, 1983, 'Nova Heart. Burlington, represent.');
+
+INSERT INTO ARTIST VALUES (52, 'Parachute Club', 'Canada', 9);
+INSERT INTO ALBUM VALUES (71, 52, 'Parachute Club', 1983, 'Current', 'Dance Pop');
+INSERT INTO HOLDING VALUES (86, 71, 'L', 'VG', 899, 1984, 'Rise Up. Toronto, 1983.');
+
+INSERT INTO ARTIST VALUES (53, 'Alannah Myles', 'Canada', 9);
+INSERT INTO ALBUM VALUES (72, 53, 'Alannah Myles', 1989, 'Atlantic', 'Rock');
+INSERT INTO HOLDING VALUES (87, 72, 'C', 'VG', 799, 1989, 'Black Velvet. Elvis is in the room.');
+
 COMMIT;
