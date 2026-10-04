@@ -1,0 +1,13 @@
+[Unit]
+Description=WAX & TAPE web front end (screen-scrapes the VAX)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/waxweb
+EnvironmentFile=%h/.config/waxweb.env
+ExecStart=/usr/bin/python3 %h/waxweb/waxweb.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

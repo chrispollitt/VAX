@@ -9,6 +9,7 @@ Little programs for a real (well, hobbyist) **OpenVMS VAX V7.3** system, written
 | [`life/`](life) | Conway's Game of Life on a wrap-around 22x78 world |
 | [`arty/`](arty) | **ARTY** - an artillery duel against a CPU gunner, with a shop, wind, craters, MIRVs... |
 | [`waxr/`](waxr) | **WAX & TAPE** - an 80s vinyl + cassette collection tracker: DEC COBOL + embedded SQL on DEC Rdb |
+| [`waxweb/`](waxweb) | a modern web front end for WAXR that **screen-scrapes** the VAX over telnet (Python, no dependencies) |
 
 Each directory holds the source plus a `BUILD_*.COM` DCL procedure that compiles it
 and links it (the C programs also define a foreign command to run them).
@@ -160,6 +161,24 @@ Things learned getting it to build on DEC COBOL / Rdb 6.0:
 * Link with `SYS$LIBRARY:SQL$USER/LIBRARY` and `SYS$LIBRARY:RDBVMS/OPTIONS`; the
   `%LINK-W-MULPSC` warnings are normal for precompiled Rdb programs.
 * The `.SCO` file is in COBOL "terminal" reference format (no sequence-number columns).
+
+## WAXWEB (a web front end that screen-scrapes the VAX)
+
+[`waxweb/`](waxweb) puts a modern single-page web UI (search, filters, add/sell dialogs, stats, a live
+"VAX terminal" drawer) on top of WAXR - without touching the COBOL program's interface. The server logs in
+to the VAX over telnet, starts `@RUN_WAXR`, and *types at its menus like a person*: it answers the pager,
+answers the "Is it this one? (Y/N)" pickers by exact match, parses the fixed-width screens into JSON, and
+double-checks before it sells anything.
+
+```
+ browser  <--HTTP-->  waxweb.py  <--telnet-->  VAX: @RUN_WAXR  ->  COBOL + embedded SQL  ->  Rdb
+```
+
+Plain Python 3.7+ (standard library only) and a no-build-step vanilla JS front end. It ships with a fake
+VAX (`fakevax.py`) so you can try the UI and run the tests without a VAX: `python3 waxweb/run_demo.py`.
+The tests also parse real captured VAX screens. See [`waxweb/README.md`](waxweb/README.md) for the
+architecture, the dedicated low-privilege VMS account it needs, running it behind an ssh tunnel, and the
+security notes (it holds a VMS password and can delete records - keep it on a trusted network).
 
 ## LIFE
 

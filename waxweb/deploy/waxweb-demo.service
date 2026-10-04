@@ -1,0 +1,12 @@
+[Unit]
+Description=WAX & TAPE web front end -- DEMO against the built-in fake VAX
+
+[Service]
+WorkingDirectory=%h/waxweb
+Environment=WAXWEB_BIND=0.0.0.0
+ExecStart=/usr/bin/python3 %h/waxweb/run_demo.py 8089
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

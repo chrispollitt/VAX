@@ -1,0 +1,67 @@
+Dedicated VMS account for the web front end (run these on the VAX as SYSTEM)
+===========================================================================
+
+Why: the web app logs in over telnet and types at the WAXR menus.  Give it its own
+unprivileged login instead of SYSTEM, so a bug (or a web-page visitor) can only ever do
+what the WAXR program itself allows.
+
+1. Create the account.  Pick a long random password and keep it for step 4.
+   (The DEFINE/USER line is only needed if AUTHORIZE says it cannot find SYSUAF.DAT --
+   answer N if it offers to create a new file!)
+
+   $ DEFINE/USER SYSUAF SYS$COMMON:[SYSEXE]SYSUAF.DAT
+   $ MCR AUTHORIZE SHOW [210,*]              ! make sure the UIC group is unused
+   $ DEFINE/USER SYSUAF SYS$COMMON:[SYSEXE]SYSUAF.DAT
+   $ MCR AUTHORIZE
+   UAF> ADD WAXWEB /PASSWORD=<the-long-random-password> /UIC=[210,210] -
+   _UAF> /OWNER="WAX & TAPE web" /DEVICE=DUA1: /DIRECTORY=[WAXWEB] /LGICMD=NL: -
+   _UAF> /PRIVILEGES=(TMPMBX,NETMBX) /DEFPRIVILEGES=(TMPMBX,NETMBX) -
+   _UAF> /MAXJOBS=2 /PRCLM=2
+   UAF> SHOW WAXWEB
+   !  A new account inherits the DEFAULT record, so it comes out DISABLED and with a
+   !  PRE-EXPIRED password (the first login would demand a new one, which the web app
+   !  cannot answer).  Fix both, and give it room to run Rdb:
+   UAF> MODIFY WAXWEB /FLAGS=NODISUSER /NOPWDEXPIRED /PWDLIFETIME=NONE -
+   _UAF> /BYTLM=100000 /BIOLM=100 /DIOLM=100 /ENQLM=500 -
+   _UAF> /WSDEFAULT=2048 /WSQUOTA=4096 /WSEXTENT=16384 /PGFLQUOTA=100000
+   UAF> SHOW WAXWEB          ! must now show: no DisUser flag; Pwdchange not "pre-expired";
+                             ! Pwdlifetime (none); privileges only NETMBX TMPMBX
+   UAF> EXIT
+   (If AUTHORIZE rejects /PWDLIFETIME=NONE, retry the MODIFY without it: the password
+    then expires in 90 days and the web app will stop logging in until you reset it.)
+
+2. Give it a home directory.
+   $ CREATE/DIRECTORY DUA1:[WAXWEB]/OWNER_UIC=[210,210]
+
+3. Let it run the program, and let it into the Rdb database.
+   The directory DUA1:[SYSTEM.WAXR] is already world-readable, but the program files are not,
+   and the database has an Rdb ACL that lists only SYSTEM.
+
+   (Type each of these as ONE line.  When a command is continued with a trailing hyphen,
+    DCL shows "_$ " itself on the next line -- you don't type that.)
+   $ SET SECURITY/CLASS=FILE/ACL=(IDENTIFIER=[210,210],OPTIONS=DEFAULT,ACCESS=READ+EXECUTE) DUA1:[SYSTEM]WAXR.DIR
+   $ SET SECURITY/CLASS=FILE/ACL=(IDENTIFIER=[210,210],ACCESS=READ+EXECUTE) DUA1:[SYSTEM.WAXR]WAXR.EXE;*
+   $ SET SECURITY/CLASS=FILE/ACL=(IDENTIFIER=[210,210],ACCESS=READ+EXECUTE) DUA1:[SYSTEM.WAXR]RUN_WAXR.COM;*
+   (SET SECURITY takes one file spec per command -- no comma lists -- hence two commands.)
+   $ SET DEFAULT DUA1:[SYSTEM.WAXR]
+   $ DEFINE WAXDB DUA1:[SYSTEM.WAXR]WAXDB
+   $ MCR SQL$
+   SQL> ATTACH 'FILENAME WAXDB';
+   SQL> GRANT ALL ON DATABASE ALIAS RDB$DBHANDLE TO [210,210];
+   SQL> GRANT ALL ON TABLE ARTIST, ALBUM, HOLDING TO [210,210];
+   SQL> COMMIT;
+   SQL> EXIT
+
+   (If your Rdb SQL rejects one of those GRANT forms, tell me the error text; the usual
+   fix is only the spelling of the grantee.)
+
+4. Put the credentials where the web app reads them (on the web host, NOT in the repo):
+   $ ssh webhost
+   $ cp ~/waxweb/deploy/waxweb.env.example ~/.config/waxweb.env     # or create it by hand
+   $ chmod 600 ~/.config/waxweb.env
+   $ nano ~/.config/waxweb.env      # set VAX_PASS to the password from step 1
+
+5. Test the login yourself (from a machine that can reach the VAX):
+   $ telnet <vax>        ->  login as WAXWEB, then:
+   $ SET DEFAULT DUA1:[SYSTEM.WAXR]
+   $ @RUN_WAXR           ->  the WAX & TAPE menu should appear; pick 1 to see the shelf.

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WAX &amp; TAPE</title>
+<meta name="description" content="A web front end that screen-scrapes an OpenVMS VAX running a COBOL + Rdb record collection tracker.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23140a2e'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23ff3fa4' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='8' fill='%2300e5ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="disc" aria-hidden="true"></div>
+    <div>
+      <h1>WAX <span>&amp;</span> TAPE</h1>
+      <p class="tag">the totally tubular 80s collection tracker<br><small>a web page, scraping a COBOL program, on a VAX</small></p>
+    </div>
+  </div>
+  <div class="status" id="status" title="Connection to the VAX">
+    <span class="dot"></span><span id="statusText">checking the VAX&hellip;</span>
+  </div>
+</header>
+
+<section class="quip" aria-live="polite"><span id="quip">Dialing the VAX at 9600 baud&hellip;</span></section>
+
+<section class="chips" id="counts" aria-label="Collection totals"></section>
+
+<section class="controls">
+  <input id="q" type="search" placeholder="Search artists, albums, labels, genres, notes&hellip;" aria-label="Search the collection" autocomplete="off">
+  <div class="filters" id="filters" role="group" aria-label="Filters"></div>
+  <select id="sort" aria-label="Sort order">
+    <option value="name">A&ndash;Z</option>
+    <option value="hair">Hair (high to low)</option>
+    <option value="year">Newest album</option>
+    <option value="copies">Most copies</option>
+  </select>
+  <div class="actions">
+    <button class="btn" id="addArtist">+ Artist</button>
+    <button class="btn" id="addAlbum">+ Album</button>
+    <button class="btn" id="addCopy">+ Copy</button>
+    <button class="btn ghost" id="refresh" title="Re-run the roll call on the VAX">&#8635; Refresh</button>
+    <button class="btn ghost" id="showStats">Stats</button>
+    <button class="btn ghost" id="showTerm">Terminal</button>
+    <button class="btn ghost" id="theme" title="Toggle light / dark" aria-label="Toggle light or dark">&#9680;</button>
+  </div>
+</section>
+
+<main id="grid" class="grid" aria-live="polite"></main>
+<p class="empty" id="empty" hidden>Nothing matches. Even the B-sides are shy.</p>
+
+<aside class="drawer" id="statsDrawer" aria-hidden="true">
+  <div class="drawer-head"><h2>Stats for nerds</h2><button class="x" data-close aria-label="Close">&times;</button></div>
+  <div id="statsBody" class="drawer-body"></div>
+</aside>
+
+<aside class="drawer term" id="termDrawer" aria-hidden="true">
+  <div class="drawer-head"><h2>Live VAX terminal</h2><button class="x" data-close aria-label="Close">&times;</button></div>
+  <p class="hint">Everything on this page comes from the text below &mdash; the exact screens the VAX prints, parsed on the fly. Passwords are masked.</p>
+  <pre id="termBody" class="drawer-body crt" tabindex="0"></pre>
+</aside>
+
+<div class="busy" id="busy" hidden><div class="spin"></div><p id="busyText">Talking to the VAX&hellip;</p></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<dialog id="dlgArtist">
+  <form method="dialog" data-kind="artist">
+    <h3>New band</h3>
+    <label>Name <input name="name" required maxlength="32" autocomplete="off"></label>
+    <label>Where from? <input name="origin" maxlength="16" value="USA" list="origins" autocomplete="off"></label>
+    <label>Hair score: <output id="hairOut">5</output>/10 <input name="hair" type="range" min="0" max="10" value="5"></label>
+    <div class="row"><button class="btn" value="ok">Add to the shelf</button><button class="btn ghost" value="cancel" formnovalidate>Cancel</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgAlbum">
+  <form method="dialog" data-kind="album">
+    <h3>New record</h3>
+    <label>Artist <select name="artist" required></select></label>
+    <label>Title <input name="title" required maxlength="40" autocomplete="off"></label>
+    <div class="two">
+      <label>Year <input name="year" type="number" min="1900" max="2099" placeholder="1984"></label>
+      <label>Label <input name="label" maxlength="20" autocomplete="off"></label>
+    </div>
+    <label>Genre <input name="genre" maxlength="16" list="genres" autocomplete="off"></label>
+    <div class="row"><button class="btn" value="ok">File it under cool</button><button class="btn ghost" value="cancel" formnovalidate>Cancel</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgCopy">
+  <form method="dialog" data-kind="copy">
+    <h3>Fresh wax</h3>
+    <label>Artist <select name="artist" required></select></label>
+    <label>Album <select name="album" required></select></label>
+    <fieldset><legend>Format</legend>
+      <label class="radio"><input type="radio" name="media" value="L" checked> 12&Prime; LP</label>
+      <label class="radio"><input type="radio" name="media" value="C"> Cassette</label>
+      <label class="radio"><input type="radio" name="media" value="S"> 12&Prime; single</label>
+      <label class="radio"><input type="radio" name="media" value="7"> 7&Prime; single</label>
+    </fieldset>
+    <div class="two">
+      <label>Condition <select name="grade"><option>M</option><option>NM</option><option selected>VG+</option><option>VG</option><option>G</option><option>F</option><option>P</option></select></label>
+      <label>Price paid ($) <input name="price" inputmode="decimal" placeholder="8.99"></label>
+    </div>
+    <div class="two">
+      <label>Year bought <input name="year" type="number" min="1950" max="2099" placeholder="1985"></label>
+      <label>Notes <input name="notes" maxlength="40" placeholder="where? who? why?" autocomplete="off"></label>
+    </div>
+    <div class="row"><button class="btn" value="ok">Add to the pile</button><button class="btn ghost" value="cancel" formnovalidate>Cancel</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgSell">
+  <form method="dialog" data-kind="sell">
+    <h3>Sell out?</h3>
+    <p id="sellText"></p>
+    <div class="row"><button class="btn danger" value="ok">Off to the record fair</button><button class="btn ghost" value="cancel">Keep it</button></div>
+  </form>
+</dialog>
+
+<datalist id="origins"><option>Canada</option><option>USA</option><option>UK</option><option>Ireland</option><option>Australia</option><option>Sweden</option></datalist>
+<datalist id="genres"><option>Rock</option><option>New Wave</option><option>Synthpop</option><option>CCM</option><option>Pop</option><option>Hard Rock</option><option>Worship</option><option>Soundtrack</option></datalist>
+
+<script src="/app.js"></script>
+</body>
+</html>

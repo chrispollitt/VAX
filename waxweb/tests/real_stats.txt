@@ -1,0 +1,28 @@
+8
+ 
+  ---- THE NUMBERS (nerd mode engaged) ----
+  Artists ................  105
+  Albums .................  146
+  Physical objects .......  164
+    12in LPs .............   51
+    Cassettes ............  111
+    12in singles .........    2
+  Albums owned twice+ ....   17
+  Total spent ............    $768.13
+  Canadian artists (eh?) .   28
+  CanCon share ...........  26 %
+  CanCon verdict: under the CRTC's 35%. Sorry.
+  Average artist hair ....  5.6 / 10
+  Verdict: respectable volume.
+  More tape than vinyl. Walkman gang rules.
+ 
+   1) Roll call   - every artist, album and copy
+   2) Who is this - look up an artist
+   3) Needle drop - find an album by title
+   4) New band    - add an artist
+   5) New record  - add an album
+   6) Fresh wax   - add a copy (LP, tape, 12in)
+   7) Sell out    - remove a copy
+   8) Stats for nerds
+   0) Eject
+  Your pick, music lover: 
