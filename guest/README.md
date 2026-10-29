@@ -11,8 +11,9 @@ terminals (a VT100 login over telnet) with the user name and the shared password
 
 ## Use
 
-Get `CREATE_GUEST.COM` onto the VAX in **ASCII** mode (FTP `ascii`, or paste), then, logged
-in as SYSTEM:
+Get `CREATE_GUEST.COM` onto the VAX in **ASCII** mode (FTP `ascii`, or paste). The TCPware
+FTP transfer hung in active mode on the first try; use **passive** mode (`passive` at the
+`ftp>` prompt). Then, logged in as SYSTEM:
 
 ```
 $ @CREATE_GUEST [user] [password] [uic] [device]
@@ -125,11 +126,12 @@ have been stable for decades, but none of this was confirmed against V7.3 itself
 
 **DCL idioms**
 
-* `DEFINE/USER SYS$INPUT`, `SYS$OUTPUT` and `DEFINE/USER SYS$ERROR SYS$OUTPUT` ahead of
-  `MCR AUTHORIZE`. If stderr is not captured, error messages show on the terminal instead
-  of in the temp file, and the `MODIFY` "ok (no error message seen)" lines then prove
-  nothing; read the screen and the step 7 record.
-* `SEARCH ... /OUTPUT=NL:` followed by `$SEVERITY .EQ. 1` meaning "found".
+* `DEFINE/USER SYS$INPUT`, `SYS$OUTPUT` and `SYS$ERROR` (the last two to two *different*
+  files) ahead of `MCR AUTHORIZE`. The first real run printed nothing from AUTHORIZE at
+  all; the procedure now says so ("AUTHORIZE printed nothing") and retries with
+  `RUN SYS$SYSTEM:AUTHORIZE`. Whether that fixes it is not known yet.
+* `DEFINE/USER SYS$OUTPUT NL:` and `SYS$ERROR NL:` before `SEARCH` to keep it quiet, then
+  `$SEVERITY .EQ. 1` meaning "found".
 * `SET TERMINAL/NOECHO` with `READ ... SYS$COMMAND` for the password entry (echo is
   restored in the cleanup section on every exit path).
 * `F$ENVIRONMENT("PROTECTION")` fed back into `SET PROTECTION=(...)/DEFAULT` to restore

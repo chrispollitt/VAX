@@ -43,6 +43,7 @@ $ ST_HARD = "not done"
 $ ST_DIR = "not done"
 $ ST_LOGIN = "not done"
 $ MOD_BAD = 0
+$ UE_SILENT == 0
 $ G_USER = ""
 $ G_UIC = ""
 $ G_DEV = ""
@@ -129,6 +130,17 @@ $ ! ---------------------------------------------------------------- step 2
 $ SAY "Step 2 of 7: look for an existing ''G_USER' account"
 $ CALL USER_EXISTS "''G_USER'" "SHOW0"
 $ IF $STATUS THEN GOTO ALREADY
+$ IF .NOT. UE_SILENT THEN GOTO NOT_FOUND
+$ SAY "  AUTHORIZE printed nothing with:  ''AUTH_CMD'"
+$ SAY "  Trying  RUN SYS$SYSTEM:AUTHORIZE  instead."
+$ AUTH_CMD = "RUN SYS$SYSTEM:AUTHORIZE"
+$ CALL USER_EXISTS "''G_USER'" "SHOW0B"
+$ IF $STATUS THEN GOTO ALREADY
+$ IF .NOT. UE_SILENT THEN GOTO NOT_FOUND
+$ SAY "  ERROR: AUTHORIZE printed nothing that way either.  Nothing was changed."
+$ SAY "  Try it by hand:  $ MCR AUTHORIZE  then  UAF> SHOW ''G_USER'"
+$ GOTO FAIL
+$NOT_FOUND:
 $ SAY "  not found - will create it"
 $ !
 $ ! ---------------------------------------------------------------- step 3
@@ -141,13 +153,21 @@ $ WRITE CRGF "   /DEVICE=''G_DEV' /DIRECTORY=[''G_DIR'] /PRIVILEGES=(TMPMBX,NETM
 $ WRITE CRGF "   /DEFPRIVILEGES=(TMPMBX,NETMBX) /FLAGS=(LOCKPWD)"
 $ WRITE CRGF "EXIT"
 $ CLOSE CRGF
-$ CALL RUN_AUTH "''F_ADDC'" "''F_ADDO'"
+$ F_ADDE = BASE + "_ADDE.TMP"
+$ F_ADDOE = F_ADDO + "," + F_ADDE
+$ CALL RUN_AUTH "''F_ADDC'" "''F_ADDO'" "''F_ADDE'"
 $ DELETE/NOLOG 'F_ADDC';*
 $ CALL USER_EXISTS "''G_USER'" "SHOW1"
 $ IF $STATUS THEN GOTO ADD_OK
 $ ST_ADD = "FAILED"
-$ SAY "  ERROR: the account is not in the UAF after ADD.  AUTHORIZE said:"
-$ TYPE 'F_ADDO'
+$ SAY "  ERROR: the account is not in the UAF after ADD."
+$ CALL NO_OUTPUT "''F_ADDO'" "''F_ADDE'"
+$ IF $STATUS THEN GOTO ADD_SILENT
+$ SAY "  AUTHORIZE said:"
+$ TYPE 'F_ADDOE'
+$ GOTO FAIL_SUMMARY
+$ADD_SILENT:
+$ SAY "  AUTHORIZE printed nothing at all."
 $ GOTO FAIL_SUMMARY
 $ADD_NOFILE:
 $ ST_ADD = "FAILED"
@@ -242,8 +262,8 @@ $ SAY "Step 7 of 7: the account record as AUTHORIZE now has it"
 $ CALL USER_EXISTS "''G_USER'" "SHOWV"
 $ F_VERO = BASE + "_SHOWVO.TMP"
 $ TYPE 'F_VERO'
-$ SEARCH 'F_VERO' "pre-expired" /OUTPUT=NL:
-$ IF $SEVERITY .NE. 1 THEN GOTO NOT_PREEXP
+$ CALL QSEARCH "''F_VERO'" "pre-expired"
+$ IF .NOT. $STATUS THEN GOTO NOT_PREEXP
 $ SAY "  WARNING: the password shows as pre-expired.  With LOCKPWD, visitors"
 $ SAY "  cannot log in.  Fix:  $ MCR AUTHORIZE MODIFY ''G_USER' /NOPWDEXPIRED"
 $ FINAL = FAILSTAT
@@ -331,66 +351,119 @@ $CHECK_CHARS: SUBROUTINE
 $ L = F$LENGTH(P1)
 $ MINL = F$INTEGER(P3)
 $ MAXL = F$INTEGER(P4)
-$ IF L .LT. MINL THEN EXIT 2
-$ IF L .GT. MAXL THEN EXIT 2
+$ IF L .LT. MINL THEN EXIT %X10000002
+$ IF L .GT. MAXL THEN EXIT %X10000002
 $ I = 0
 $CC_LOOP:
 $ IF I .GE. L THEN EXIT 1
-$ IF F$LOCATE(F$EXTRACT(I,1,P1),P2) .EQ. F$LENGTH(P2) THEN EXIT 2
+$ IF F$LOCATE(F$EXTRACT(I,1,P1),P2) .EQ. F$LENGTH(P2) THEN EXIT %X10000002
 $ I = I + 1
 $ GOTO CC_LOOP
 $ ENDSUBROUTINE
 $ !
-$ ! RUN_AUTH command-file output-file
-$ ! Runs AUTHORIZE with the command file as its input, and its output
-$ ! (and error messages, if SYS$ERROR follows) in the output file.
+$ ! HAS_DATA file
+$ ! Exits 1 if the file exists and holds at least one record, else fails.
+$HAS_DATA: SUBROUTINE
+$ SET NOON
+$ OPEN/READ/ERROR=HD_NO CRGR 'P1'
+$ READ/END_OF_FILE=HD_EMPTY/ERROR=HD_EMPTY CRGR HD_LINE
+$ CLOSE CRGR
+$ EXIT 1
+$HD_EMPTY:
+$ CLOSE CRGR
+$HD_NO:
+$ EXIT %X10000002
+$ ENDSUBROUTINE
+$ !
+$ ! NO_OUTPUT out-file err-file
+$ ! Exits 1 if AUTHORIZE wrote nothing at all to either file.  A real run
+$ ! always says something (at least a "record updated" or an error), so
+$ ! silence means the command or the DEFINE/USER redirection did not work.
+$NO_OUTPUT: SUBROUTINE
+$ CALL HAS_DATA "''P1'"
+$ IF $STATUS THEN EXIT %X10000002
+$ CALL HAS_DATA "''P2'"
+$ IF $STATUS THEN EXIT %X10000002
+$ EXIT 1
+$ ENDSUBROUTINE
+$ !
+$ ! QSEARCH files pattern
+$ ! Quiet SEARCH: exits 1 if the pattern is found, and prints no messages.
+$QSEARCH: SUBROUTINE
+$ DEFINE/USER SYS$OUTPUT NL:
+$ DEFINE/USER SYS$ERROR NL:
+$ SEARCH 'P1' "''P2'"
+$ IF $SEVERITY .EQ. 1 THEN EXIT 1
+$ EXIT %X10000002
+$ ENDSUBROUTINE
+$ !
+$ ! RUN_AUTH command-file output-file error-file
+$ ! Runs AUTHORIZE with the command file as its input.  Output and error
+$ ! messages go to two different files: pointing both at one file name
+$ ! would open it twice.
 $RUN_AUTH: SUBROUTINE
 $ DEFINE/USER SYS$INPUT 'P1'
 $ DEFINE/USER SYS$OUTPUT 'P2'
-$ DEFINE/USER SYS$ERROR SYS$OUTPUT
+$ DEFINE/USER SYS$ERROR 'P3'
 $ 'AUTH_CMD'
 $ EXIT 1
 $ ENDSUBROUTINE
 $ !
 $ ! USER_EXISTS user tag
-$ ! Exits 1 if AUTHORIZE SHOW finds the user, else 2.  TAG makes the
-$ ! temporary file names unique, the output stays in BASE_<tag>O.TMP.
+$ ! Exits 1 if AUTHORIZE SHOW finds the user, else fails.  TAG makes the
+$ ! temporary file names unique (BASE_<tag>C, O and E .TMP).  Sets the
+$ ! global UE_SILENT to 1 when AUTHORIZE printed nothing at all.
 $USER_EXISTS: SUBROUTINE
 $ SET NOON
+$ UE_SILENT == 0
 $ F_C = BASE + "_" + P2 + "C.TMP"
 $ F_O = BASE + "_" + P2 + "O.TMP"
+$ F_E = BASE + "_" + P2 + "E.TMP"
 $ OPEN/WRITE/ERROR=UE_FAIL CRGF 'F_C'
 $ WRITE CRGF "SHOW ''P1'"
 $ WRITE CRGF "EXIT"
 $ CLOSE CRGF
-$ CALL RUN_AUTH "''F_C'" "''F_O'"
-$ SEARCH 'F_O' "Username: ''P1' " /OUTPUT=NL:
-$ IF $SEVERITY .EQ. 1 THEN EXIT 1
+$ CALL RUN_AUTH "''F_C'" "''F_O'" "''F_E'"
+$ CALL NO_OUTPUT "''F_O'" "''F_E'"
+$ IF $STATUS THEN UE_SILENT == 1
+$ CALL QSEARCH "''F_O'" "Username: ''P1' "
+$ IF $STATUS THEN EXIT 1
 $UE_FAIL:
-$ EXIT 2
+$ EXIT %X10000002
 $ ENDSUBROUTINE
 $ !
 $ ! MOD_ONE qualifier tag
 $ ! Runs one AUTHORIZE MODIFY on the account.  Exits 1 if no error message
-$ ! (-E-, -W-, -F-) appears in the output, else shows the output and exits 2.
+$ ! (-E-, -W-, -F-) appears in the output, else shows the output and fails.
 $MOD_ONE: SUBROUTINE
 $ SET NOON
 $ F_C = BASE + "_" + P2 + "C.TMP"
 $ F_O = BASE + "_" + P2 + "O.TMP"
+$ F_E = BASE + "_" + P2 + "E.TMP"
+$ F_OE = F_O + "," + F_E
 $ OPEN/WRITE/ERROR=MO_NOFILE CRGF 'F_C'
 $ WRITE CRGF "MODIFY ''G_USER' ''P1'"
 $ WRITE CRGF "EXIT"
 $ CLOSE CRGF
-$ CALL RUN_AUTH "''F_C'" "''F_O'"
-$ SEARCH 'F_O' "-E-","-W-","-F-" /OUTPUT=NL:
-$ IF $SEVERITY .NE. 1 THEN GOTO MO_OK
-$ SAY "  MODIFY ''P1' : FAILED, AUTHORIZE said:"
-$ TYPE 'F_O'
-$ EXIT 2
-$MO_OK:
+$ CALL RUN_AUTH "''F_C'" "''F_O'" "''F_E'"
+$ CALL NO_OUTPUT "''F_O'" "''F_E'"
+$ IF $STATUS THEN GOTO MO_SILENT
+$ CALL QSEARCH "''F_OE'" "-E-"
+$ IF $STATUS THEN GOTO MO_BAD
+$ CALL QSEARCH "''F_OE'" "-W-"
+$ IF $STATUS THEN GOTO MO_BAD
+$ CALL QSEARCH "''F_OE'" "-F-"
+$ IF $STATUS THEN GOTO MO_BAD
 $ SAY "  MODIFY ''P1' : ok (no error message seen)"
 $ EXIT 1
+$MO_BAD:
+$ SAY "  MODIFY ''P1' : FAILED, AUTHORIZE said:"
+$ TYPE 'F_OE'
+$ EXIT %X10000002
+$MO_SILENT:
+$ SAY "  MODIFY ''P1' : AUTHORIZE printed nothing at all, result unknown"
+$ EXIT %X10000002
 $MO_NOFILE:
 $ SAY "  MODIFY ''P1' : FAILED, cannot write the temporary file"
-$ EXIT 2
+$ EXIT %X10000002
 $ ENDSUBROUTINE
