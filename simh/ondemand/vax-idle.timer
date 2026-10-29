@@ -1,0 +1,10 @@
+[Unit]
+Description=Check once a minute whether the simh VAX (cpvax) is idle
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

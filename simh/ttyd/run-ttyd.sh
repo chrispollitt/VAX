@@ -1,9 +1,11 @@
 #!/bin/sh
 # Serve cpvax in a browser tab through ttyd (xterm.js).  Two ways in, chosen by VAX_MODE:
 #   login    (default) telnet to OpenVMS itself, 192.168.20.30:23: a normal VT100 user session;
-#            several at a time.  The VAX must be up (it is started by hand: sudo systemctl start vax).
+#            several at a time.
 #   console  the simh console on 127.0.0.1:2323 (OPA0:).  One client at a time, and Ctrl-E there
 #            gives the simh prompt, where "quit" stops the machine without a VMS shutdown.
+# Both offer to power the VAX on when it is off (see ondemand/: it needs a buffered simh console, a sudoers line,
+# and vax-ctl switches it off again when idle).  Watching it boot: power it on from the console window.
 # The terminal is writable, so keep it on one interface, "lo" by default, behind an authenticating proxy
 # (POSIX/web-ttyd).  For no browser chrome at all, use F11, or the browser's "install as app".
 #
@@ -14,12 +16,16 @@
 here=$(cd "$(dirname "$0")" && pwd)
 case ${VAX_MODE:-login} in
   login)   VAX_HOST=${VAX_HOST:-192.168.20.30}; VAX_PORT=${VAX_PORT:-23};  VAX_NAME=cpvax
+           VAX_BOOT_WAIT=${VAX_BOOT_WAIT:-900}
+           VAX_HINT=${VAX_HINT-Boot messages are on the cpvax console (from the list of apps).}
            title="cpvax (OpenVMS)";  port=7683; max=4 ;;
   console) VAX_HOST=${VAX_HOST:-127.0.0.1};     VAX_PORT=${VAX_PORT:-2323}; VAX_NAME="cpvax console"
+           VAX_BOOT_WAIT=${VAX_BOOT_WAIT:-60}
+           VAX_HINT=${VAX_HINT-}
            title="cpvax console";    port=7684; max=1 ;;
   *) echo "VAX_MODE must be login or console" >&2; exit 2 ;;
 esac
-export VAX_HOST VAX_PORT VAX_NAME
+export VAX_HOST VAX_PORT VAX_NAME VAX_BOOT_WAIT VAX_HINT
 exec "${TTYD:-ttyd}" -W -i "${IFACE:-lo}" -p "${PORT:-$port}" -m "${MAX_CLIENTS:-$max}" \
   -T vt100 ${BASE:+-b "$BASE"} \
   -t titleFixed="$title" -t disableLeaveAlert=true -t disableResizeOverlay=true \

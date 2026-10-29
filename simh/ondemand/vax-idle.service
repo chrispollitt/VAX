@@ -1,0 +1,14 @@
+[Unit]
+Description=Switch the simh VAX (cpvax) off, in an orderly way, when it has been idle
+ConditionPathExists=/usr/local/sbin/vax-ctl
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vax-ctl idle-check
+# an orderly VMS shutdown (warning period included) takes minutes
+TimeoutStartSec=20min
+StateDirectory=vax-ctl
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes

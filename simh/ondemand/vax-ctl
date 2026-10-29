@@ -1,0 +1,418 @@
+#!/usr/bin/env python3
+"""vax-ctl: keep the simh VAX (cpvax) off until it is wanted, and switch it off again when it is idle.
+
+    vax-ctl status            is it running, does VMS answer, how long has it been idle
+    vax-ctl idle-check        what the timer runs every minute (root): count idle minutes, and past the limit
+                              shut the VAX down; --dry-run only says what it would do
+    vax-ctl shutdown          an orderly stop: log in to OpenVMS, run SHUTDOWN, wait for it, then stop the unit
+
+Starting is not done here: the web terminal runs `sudo systemctl start vax.service` (one sudoers line).
+
+"Idle" means, for IDLE_MINUTES in a row, simh used less than CPU_PCT_MAX percent of a core and fewer than
+NET_BYTES_PER_MIN_MAX bytes crossed the vaxtap interface.  A telnet session nobody types in is idle; a batch job
+is not.  Nothing counts for the first STARTUP_GRACE_MINUTES after the VAX starts (booting looks quiet in places).
+
+A plain `systemctl stop vax` is a power cut for the emulated machine (see cmpi-router's setup-vax.sh), so the stop
+always goes through VMS's own SHUTDOWN first.  If that fails the VAX is left running and the failure is logged;
+nothing is ever stopped by force.
+
+Configuration: /etc/vax-ctl.conf (KEY=value), credentials for the SHUTDOWN login: /etc/vax-ctl.cred
+(VMS_USER=, VMS_PASSWORD=; root only).  Python 3, no modules beyond the standard library.
+"""
+import argparse
+import json
+import os
+import re
+import select
+import socket
+import subprocess
+import sys
+import time
+
+CONF = os.environ.get("VAX_CTL_CONF", "/etc/vax-ctl.conf")
+STATE = os.environ.get("VAX_CTL_STATE", "/var/lib/vax-ctl/state.json")
+PROC = os.environ.get("VAX_CTL_PROC", "/proc")
+SYS = os.environ.get("VAX_CTL_SYS", "/sys")
+
+DEFAULTS = {
+    "UNIT": "vax.service",
+    "NET_IF": "vaxtap",
+    "IDLE_MINUTES": 30,
+    "STARTUP_GRACE_MINUTES": 10,
+    "CPU_PCT_MAX": 3.0,
+    "NET_BYTES_PER_MIN_MAX": 60000,
+    "SHUTDOWN_WARN_MINUTES": 2,
+    "SHUTDOWN_RETRY_MINUTES": 15,
+    "SETTLE_SECONDS": 20,
+    "VMS_HOST": "192.168.20.30",
+    "VMS_PORT": 23,
+    "CRED_FILE": "/etc/vax-ctl.cred",
+}
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+def read_kv(path):
+    out = {}
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                out[k.strip()] = v.strip().strip('"').strip("'")
+    except IOError:
+        pass
+    return out
+
+
+def load_conf(path=None):
+    cfg = dict(DEFAULTS)
+    for k, v in read_kv(path or CONF).items():
+        if k in DEFAULTS:
+            cfg[k] = type(DEFAULTS[k])(v)
+    return cfg
+
+
+# ---------------------------------------------------------------- the idle decision (pure, tested)
+
+def step(state, cur, cfg):
+    """state: {'last': previous sample, 'idle_since': epoch or None}; cur: {'t','cpu_s','net_b','age_s'}.
+    Returns (new state, info) with info = {'busy', 'why', 'idle_min', 'cpu_pct', 'net_per_min'}."""
+    state = dict(state)
+    last = state.get("last")
+    state["last"] = cur
+    info = {"busy": True, "why": "", "idle_min": 0.0, "cpu_pct": None, "net_per_min": None}
+    if cur["age_s"] < cfg["STARTUP_GRACE_MINUTES"] * 60:
+        state["idle_since"] = None
+        info["why"] = "starting up"
+        return state, info
+    if not last or cur["t"] <= last["t"]:
+        state["idle_since"] = None
+        info["why"] = "first sample"
+        return state, info
+    dt = cur["t"] - last["t"]
+    cpu_pct = 100.0 * (cur["cpu_s"] - last["cpu_s"]) / dt
+    net_pm = 60.0 * (cur["net_b"] - last["net_b"]) / dt
+    info["cpu_pct"], info["net_per_min"] = cpu_pct, net_pm
+    if cpu_pct > cfg["CPU_PCT_MAX"]:
+        info["why"] = "cpu %.1f%%" % cpu_pct
+    elif net_pm > cfg["NET_BYTES_PER_MIN_MAX"]:
+        info["why"] = "network %d bytes/min" % net_pm
+    else:
+        info["busy"] = False
+    if info["busy"]:
+        state["idle_since"] = None
+    else:
+        if state.get("idle_since") is None:
+            state["idle_since"] = last["t"]
+        info["idle_min"] = (cur["t"] - state["idle_since"]) / 60.0
+    return state, info
+
+
+# ---------------------------------------------------------------- the host
+
+def systemctl(*args):
+    return subprocess.run(["systemctl"] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+
+def unit_active(cfg):
+    return systemctl("is-active", "--quiet", cfg["UNIT"]).returncode == 0
+
+
+def main_pid(cfg):
+    out = systemctl("show", "-p", "MainPID", "--value", cfg["UNIT"]).stdout.strip()
+    return int(out) if out.isdigit() else 0
+
+
+def sample(cfg, pid):
+    """cpu seconds and age of the simh process, bytes over the tap interface, now."""
+    hz = os.sysconf("SC_CLK_TCK")
+    with open("%s/%d/stat" % (PROC, pid)) as f:
+        rest = f.read().rsplit(")", 1)[1].split()          # field N of proc(5) is rest[N-3]
+    cpu_s = (int(rest[11]) + int(rest[12])) / float(hz)      # utime + stime
+    start_s = int(rest[19]) / float(hz)                      # starttime, since boot
+    with open("%s/uptime" % PROC) as f:
+        up = float(f.read().split()[0])
+    nb = 0
+    for d in ("rx_bytes", "tx_bytes"):
+        with open("%s/class/net/%s/statistics/%s" % (SYS, cfg["NET_IF"], d)) as f:
+            nb += int(f.read())
+    return {"t": time.time(), "cpu_s": cpu_s, "net_b": nb, "age_s": up - start_s}
+
+
+def load_state():
+    try:
+        with open(STATE) as f:
+            return json.load(f)
+    except (IOError, ValueError):
+        return {}
+
+
+def save_state(state):
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    tmp = STATE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp, STATE)
+
+
+def port_open(host, port, timeout=2.0):
+    try:
+        socket.create_connection((host, port), timeout).close()
+        return True
+    except (OSError, socket.timeout):
+        return False
+
+
+# ---------------------------------------------------------------- a minimal telnet client, for the SHUTDOWN login
+
+IAC, DONT, DO, WONT, WILL, SB, SE = 255, 254, 253, 252, 251, 250, 240
+
+
+class Telnet(object):
+    def __init__(self, host, port, timeout=10):
+        self.sock = socket.create_connection((host, port), timeout)
+        self.buf = ""
+        self.pending = b""
+        self.eof = False
+
+    def close(self):
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+    def _strip(self, data):
+        """Remove telnet commands (refusing every option: plain line mode is all a DCL login needs)."""
+        data = self.pending + data
+        out, i, n = bytearray(), 0, len(data)
+        while i < n:
+            b = data[i]
+            if b != IAC:
+                if b != 0:
+                    out.append(b)
+                i += 1
+            elif i + 1 >= n:
+                break
+            elif data[i + 1] == IAC:
+                out.append(255)
+                i += 2
+            elif data[i + 1] in (DO, DONT, WILL, WONT):
+                if i + 2 >= n:
+                    break
+                if data[i + 1] == DO:
+                    self.sock.sendall(bytes([IAC, WONT, data[i + 2]]))
+                elif data[i + 1] == WILL:
+                    self.sock.sendall(bytes([IAC, DONT, data[i + 2]]))
+                i += 3
+            elif data[i + 1] == SB:
+                j = data.find(bytes([IAC, SE]), i + 2)
+                if j < 0:
+                    break
+                i = j + 2
+            else:
+                i += 2
+        self.pending = bytes(data[i:])
+        return out.decode("latin-1")
+
+    def _pump(self, wait):
+        if self.eof:
+            return
+        r, _, _ = select.select([self.sock], [], [], wait)
+        if r:
+            data = self.sock.recv(4096)
+            if not data:
+                self.eof = True
+            else:
+                self.buf += self._strip(data)
+
+    def expect(self, patterns, timeout):
+        """First of `patterns` (compiled regexes) to match in the incoming text: (index, text up to and including
+        it).  (None, text) at end of connection; raises socket.timeout."""
+        deadline = time.time() + timeout
+        while True:
+            best = None
+            for i, p in enumerate(patterns):
+                m = p.search(self.buf)
+                if m and (best is None or m.start() < best[1].start()):
+                    best = (i, m)
+            if best:
+                text, self.buf = self.buf[:best[1].end()], self.buf[best[1].end():]
+                return best[0], text
+            if self.eof:
+                text, self.buf = self.buf, ""
+                return None, text
+            left = deadline - time.time()
+            if left <= 0:
+                raise socket.timeout("no match for %s" % [p.pattern for p in patterns])
+            self._pump(min(left, 1.0))
+
+    def send(self, text):
+        self.sock.sendall(text.encode("latin-1") + b"\r\0")      # Enter, as a telnet client sends it
+
+
+def _clean(text):
+    return re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", text).strip()
+
+
+# SHUTDOWN.COM asks these, in this order, and takes the default (shown here as "") for the rest
+SHUTDOWN_PROMPTS = [
+    (r"how many minutes until final shutdown", "{minutes}"),
+    (r"reason for shutdown", "{reason}"),
+    (r"spin down the disk volumes", "NO"),
+    (r"site-specific shutdown procedure", "YES"),
+    (r"automatic system reboot", "NO"),
+    (r"shutdown options", ""),
+]
+
+
+def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=None):
+    """Log in to OpenVMS and run @SYS$SYSTEM:SHUTDOWN.  True once VMS has gone down (the connection closed or it
+    said so); False on anything unexpected, with the transcript logged (never the password).  After the last
+    prompt VMS is silent for the whole warning period, so the only bound is one deadline: the warning plus 5 minutes."""
+    t_down = t_down if t_down is not None else minutes * 60 + 300
+    rx = lambda s: re.compile(s, re.I)
+    login_ok = rx(r"(?:\r?\n|^)\$ *$")
+    login_bad = rx(r"%LOGIN-F|invalid password|user authorization failure|login incorrect")
+    prompts = [rx(p) for p, _ in SHUTDOWN_PROMPTS]
+    done = rx(r"shutdown complete|system halted|halting")
+    try:
+        t = Telnet(host, port)
+    except OSError as e:
+        log("shutdown: cannot connect to %s:%s: %s" % (host, port, e))
+        return False
+    try:
+        i, text = t.expect([rx(r"username:")], t_login)
+        if i is None:
+            log("shutdown: connection closed before the login prompt")
+            return False
+        log("vms> " + _clean(text)[-200:])
+        t.send(user)
+        t.expect([rx(r"password:")], t_login)
+        log("vms> (sending the password)")
+        t.send(secret)
+        i, text = t.expect([login_ok, login_bad], t_login)
+        log("vms> " + _clean(text)[-300:])
+        if i != 0:
+            log("shutdown: VMS login failed")
+            return False
+        t.send("@SYS$SYSTEM:SHUTDOWN")
+        deadline = time.time() + t_down
+        while True:
+            left = deadline - time.time()
+            if left <= 0:
+                raise socket.timeout("VMS did not go down within %d s" % t_down)
+            i, text = t.expect(prompts + [done], left)
+            if text.strip():
+                log("vms> " + _clean(text)[-300:])
+            if i is None:
+                log("shutdown: VMS closed the connection (it is going down)")
+                return True
+            if i == len(prompts):
+                log("shutdown: VMS reports the shutdown is complete")
+                return True
+            answer = SHUTDOWN_PROMPTS[i][1].format(minutes=minutes, reason=reason)
+            log("vms< " + (answer or "(default)"))
+            t.send(answer)
+    except socket.timeout as e:
+        log("shutdown: timed out waiting for VMS (%s); transcript above. The VAX is left running." % e)
+        return False
+    finally:
+        t.close()
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_shutdown(cfg, args=None):
+    if not unit_active(cfg):
+        log("shutdown: %s is not running" % cfg["UNIT"])
+        return 0
+    cred = read_kv(cfg["CRED_FILE"])
+    if not cred.get("VMS_USER") or not cred.get("VMS_PASSWORD"):
+        log("shutdown: no VMS_USER / VMS_PASSWORD in %s: cannot do an orderly shutdown, so not stopping the VAX" % cfg["CRED_FILE"])
+        return 3
+    log("shutdown: asking VMS to shut down (%d minute warning)" % cfg["SHUTDOWN_WARN_MINUTES"])
+    ok = vms_shutdown(cfg["VMS_HOST"], cfg["VMS_PORT"], cred["VMS_USER"], cred["VMS_PASSWORD"],
+                      cfg["SHUTDOWN_WARN_MINUTES"], "Idle timeout (vax-ctl)")
+    state = load_state()
+    if not ok:
+        state["retry_after"] = time.time() + cfg["SHUTDOWN_RETRY_MINUTES"] * 60
+        save_state(state)
+        log("shutdown: not stopping %s; will try again in %d minutes" % (cfg["UNIT"], cfg["SHUTDOWN_RETRY_MINUTES"]))
+        return 1
+    log("shutdown: VMS is down; stopping %s in %d s" % (cfg["UNIT"], cfg["SETTLE_SECONDS"]))
+    time.sleep(cfg["SETTLE_SECONDS"])
+    systemctl("stop", cfg["UNIT"])
+    state.pop("retry_after", None)
+    state.pop("idle_since", None)
+    save_state(state)
+    log("shutdown: %s is %s" % (cfg["UNIT"], "stopped" if not unit_active(cfg) else "STILL ACTIVE"))
+    return 0 if not unit_active(cfg) else 1
+
+
+def cmd_idle_check(cfg, args):
+    if not unit_active(cfg):
+        if not args.dry_run:
+            save_state({})
+        else:
+            log("%s is not running: nothing to do" % cfg["UNIT"])
+        return 0
+    pid = main_pid(cfg)
+    if not pid:
+        return 0
+    state = load_state()
+    state, info = step(state, sample(cfg, pid), cfg)
+    if not args.dry_run:                                   # a dry run reads, and does not keep the count
+        save_state(state)
+    elif info["busy"]:
+        log("busy (%s): not idle" % info["why"])
+    m = info["idle_min"]
+    if m >= 1 and int(m) % 5 == 0 and abs(m - int(m)) < 1.0 / 60 * 1.5:
+        log("idle for %d of %d minutes" % (m, cfg["IDLE_MINUTES"]))
+    if info["busy"] or m < cfg["IDLE_MINUTES"]:
+        return 0
+    if state.get("retry_after", 0) > time.time():
+        return 0
+    if args.dry_run:
+        log("idle for %.0f minutes (limit %d): would shut the VAX down" % (m, cfg["IDLE_MINUTES"]))
+        return 0
+    log("idle for %.0f minutes (limit %d): shutting the VAX down" % (m, cfg["IDLE_MINUTES"]))
+    return cmd_shutdown(cfg)
+
+
+def cmd_status(cfg, args):
+    on = unit_active(cfg)
+    print("unit %s: %s" % (cfg["UNIT"], "running" if on else "stopped"))
+    if not on:
+        return 0
+    print("OpenVMS telnet %s:%s: %s" % (cfg["VMS_HOST"], cfg["VMS_PORT"], "answers" if port_open(cfg["VMS_HOST"], cfg["VMS_PORT"]) else "not answering"))
+    st = load_state()
+    if st.get("idle_since"):
+        print("idle for %.0f of %d minutes" % ((time.time() - st["idle_since"]) / 60.0, cfg["IDLE_MINUTES"]))
+    else:
+        print("busy, or not yet judged (limit: %d idle minutes)" % cfg["IDLE_MINUTES"])
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd")
+    sub.add_parser("status")
+    p = sub.add_parser("idle-check")
+    p.add_argument("--dry-run", action="store_true")
+    sub.add_parser("shutdown")
+    args = ap.parse_args(argv)
+    cfg = load_conf()
+    fn = {"status": cmd_status, "idle-check": cmd_idle_check, "shutdown": lambda c, a: cmd_shutdown(c)}.get(args.cmd)
+    if not fn:
+        ap.print_help()
+        return 2
+    return fn(cfg, args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
