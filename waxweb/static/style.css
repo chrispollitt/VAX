@@ -40,6 +40,9 @@ h1 span { font-weight: 400; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--amber); }
 .status.ok .dot { background: var(--lime); box-shadow: 0 0 8px var(--lime); } .status.bad .dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
 .quip { margin: 10px auto 4px; padding: 10px 14px; border-left: 4px solid var(--pink); background: var(--bg2); border-radius: 0 10px 10px 0; color: var(--dim); font-style: italic; }
+.vaxbanner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 10px auto 4px; padding: 10px 14px; border-left: 4px solid var(--amber); background: var(--bg2); border-radius: 0 10px 10px 0; }
+.vaxbanner[hidden] { display: none; }
+.vaxbanner .btn { margin-left: auto; }
 .chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px auto; }
 .chip { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 14px; box-shadow: var(--shadow); min-width: 110px; }
 .chip b { display: block; font-size: 24px; line-height: 1.1; color: var(--cyan); } .chip span { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }

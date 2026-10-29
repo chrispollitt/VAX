@@ -10,6 +10,14 @@
   WAXWEB_BIND / _PORT   where to serve the web UI        (default 0.0.0.0:8088)
   WAXWEB_AUTH           optional "user:password" for HTTP basic auth
   CACHE_TTL             seconds the roll call is cached  (default 120)
+
+  The VAX on cpbee is on demand (off until powered on, off again when idle):
+  VAX_UNIT              its systemd unit, e.g. vax.service.  Set it and waxweb can tell "powered off"
+                        from "still booting" and offers a Power on button.  Unset = assume always on.
+  VAX_START_CMD         how to power it on (default: sudo -n /usr/bin/systemctl start $VAX_UNIT)
+  VAX_CONNECT_TIMEOUT   seconds to wait for the TCP connection         (default 5)
+  VAX_PROMPT_WAIT       seconds to wait for the Username prompt        (default 60)
+  VAX_SESSION_IDLE      log out of VMS after this many idle seconds, 0 = never  (default 600)
 """
 import base64
 import json
@@ -21,7 +29,8 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from vaxterm import PromptTimeout, TerminalError
+from power import Power, PowerError
+from vaxterm import PromptTimeout, TerminalError, VaxUnavailable
 from waxscrape import NotFound, WaxError, WaxSession
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -37,11 +46,16 @@ def env(name, default=None):
 
 class App(object):
     def __init__(self):
+        self.power = Power(env("VAX_UNIT") or None, env("VAX_START_CMD") or None)
         self.session = WaxSession(
             env("VAX_HOST", "127.0.0.1"), int(env("VAX_PORT", "2323")),
             env("VAX_USER", ""), env("VAX_PASS", ""),
             wax_dir=env("VAX_WAXDIR", "DUA1:[SYSTEM.WAXR]"),
-            cache_ttl=int(env("CACHE_TTL", "120")))
+            cache_ttl=int(env("CACHE_TTL", "120")),
+            power=self.power if self.power.enabled else None,
+            connect_timeout=float(env("VAX_CONNECT_TIMEOUT", "5")),
+            prompt_wait=float(env("VAX_PROMPT_WAIT", "60")),
+            idle_close=int(env("VAX_SESSION_IDLE", "600")))
         auth = env("WAXWEB_AUTH")
         self.auth = ("Basic " + base64.b64encode(auth.encode()).decode()) if auth else None
         self.started = time.time()
@@ -98,6 +112,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"ok": False, "error": str(e)})
         except WaxError as e:
             self._json(400, {"ok": False, "error": str(e)})
+        except VaxUnavailable as e:             # off / still booting / login refused: not a fault of ours
+            self._json(503, {"ok": False, "error": str(e), "vaxState": e.state,
+                             "canPowerOn": APP.power.enabled})
         except (TerminalError, PromptTimeout) as e:
             self._json(502, {"ok": False, "error": "the VAX is not answering: %s" % e})
         except Exception:                       # a bug, not a VMS problem
@@ -112,10 +129,13 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(url.query)
         s = APP.session
         if url.path == "/api/health":
+            # ?probe=1 also knocks on the VAX's telnet port; the page only asks while it waits for a boot
             return self._json(200, {"ok": True, "connected": s.term.connected, "atMenu": s.at_menu,
                                     "logins": s.logins, "lastError": s.last_error,
                                     "uptime": int(time.time() - APP.started),
-                                    "vax": "%s:%s" % (s.host, s.port)})
+                                    "vax": "%s:%s" % (s.host, s.port),
+                                    "vaxState": s.vax_state(probe=q.get("probe", ["0"])[0] == "1"),
+                                    "canPowerOn": APP.power.enabled, "blockedFor": s.blocked_for()})
         if url.path == "/api/collection":
             return self._guard(lambda: s.collection(refresh=q.get("refresh", ["0"])[0] == "1"))
         if url.path == "/api/stats":
@@ -134,6 +154,8 @@ class Handler(BaseHTTPRequestHandler):
             b = self._body()
         except WaxError as e:
             return self._json(400, {"ok": False, "error": str(e)})
+        if path == "/api/vax/power-on":
+            return self._power_on()
         if path == "/api/artist":
             return self._guard(lambda: s.add_artist(b.get("name"), b.get("origin"), b.get("hair")))
         if path == "/api/album":
@@ -147,6 +169,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._guard(lambda: s.remove_copy(b.get("artist"), b.get("album"), b.get("index"),
                                                      b.get("media"), b.get("notes")))
         self._json(404, {"ok": False, "error": "no such endpoint"})
+
+    def _power_on(self):
+        if not APP.power.enabled:
+            return self._json(404, {"ok": False, "error": "power control is not configured (VAX_UNIT)"})
+        if APP.power.is_on():                   # already on: nothing to do, the page just waits
+            return self._json(200, {"ok": True, "vaxState": APP.session.vax_state(), "message": "already on"})
+        try:
+            APP.power.power_on()
+        except PowerError as e:
+            return self._json(502, {"ok": False, "error": str(e)})
+        print("powered on %s at a web client's request" % APP.power.unit, flush=True)
+        self._json(200, {"ok": True, "vaxState": "booting", "message": "powering on"})
 
     def _static(self, path):
         if path in ("", "/"):
@@ -170,10 +204,23 @@ def main():
 
     def warm():                                  # pre-load the roll call so the first page is quick
         try:
+            if APP.session.vax_state() == "off":
+                print("the VAX is powered off; not warming up", flush=True)
+                return
             APP.session.collection()
         except Exception as e:                   # the VAX may be down; the UI will show it
             print("warm-up failed: %s" % e, flush=True)
     threading.Thread(target=warm, daemon=True).start()
+
+    def reaper():                                # log out of VMS when nobody has used the session for a while
+        while True:
+            time.sleep(30)
+            try:
+                APP.session.release_if_idle()
+            except Exception as e:
+                print("idle release failed: %s" % e, flush=True)
+    if APP.session.idle_close:
+        threading.Thread(target=reaper, daemon=True).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -27,7 +27,11 @@ async function api(path, opts) {
   try { r = await fetch(path, opts); } catch (e) { throw new Error('cannot reach the web server'); }
   let j = null;
   try { j = await r.json(); } catch (e) { /* not JSON */ }
-  if (!r.ok) throw new Error((j && j.error) || ('HTTP ' + r.status));
+  if (!r.ok) {
+    const err = new Error((j && j.error) || ('HTTP ' + r.status));
+    if (j && j.vaxState) { err.vaxState = j.vaxState; err.canPowerOn = !!j.canPowerOn; }   // the VAX is off / booting / refused us
+    throw err;
+  }
   return j;
 }
 const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -48,7 +52,63 @@ function toast(msg, isErr) {
 }
 async function work(label, fn) {
   busy(true, label);
-  try { return await fn(); } catch (e) { toast(e.message, true); throw e; } finally { busy(false); }
+  try { return await fn(); } catch (e) {
+    toast(e.message, true);
+    if (e.vaxState) showVaxWait(e.vaxState, e.canPowerOn);
+    throw e;
+  } finally { busy(false); }
+}
+
+// ---------------------------------------------------------------- the VAX is off, booting, or refused us
+// The VAX is on demand: powered off until someone asks, off again when idle.  While it is not usable the
+// banner says why, offers to power it on, and watches until telnet answers, then reloads the collection.
+const VAX_TEXT = {
+  off: 'The VAX is powered off.',
+  booting: 'The VAX is starting up. OpenVMS takes a few minutes to boot.',
+  unreachable: 'The VAX is not answering. It may be off or still starting.',
+  'login-failed': 'VMS refused the web account’s login. waxweb is pausing so the account is not locked out; check the password on the server.',
+  'logging-in': 'Logging in to the VAX…',
+};
+const vaxWait = { timer: null, tick: null, state: null, canPowerOn: false, since: 0 };
+function vaxWaitText() {
+  const s = vaxWait.state, e = Math.floor((Date.now() - vaxWait.since) / 1000);
+  const waiting = (s === 'booting' || s === 'unreachable') ? ' · waiting ' + Math.floor(e / 60) + ':' + String(e % 60).padStart(2, '0') : '';
+  $('#vaxMsg').textContent = (VAX_TEXT[s] || 'The VAX is not available.') + waiting;
+  $('#vaxPower').hidden = !(s === 'off' && vaxWait.canPowerOn);
+}
+function showVaxWait(state, canPowerOn) {
+  if (vaxWait.state !== state) vaxWait.since = Date.now();
+  vaxWait.state = state; vaxWait.canPowerOn = !!canPowerOn;
+  $('#vaxBanner').hidden = false;
+  vaxWaitText();
+  if (!vaxWait.timer) {
+    vaxWait.tick = setInterval(vaxWaitText, 1000);
+    vaxWait.timer = setInterval(pollVax, 4000);
+  }
+}
+function hideVaxWait() {
+  clearInterval(vaxWait.timer); clearInterval(vaxWait.tick);
+  vaxWait.timer = vaxWait.tick = null; vaxWait.state = null;
+  $('#vaxBanner').hidden = true;
+}
+async function pollVax() {
+  let h;
+  try { h = await api('/api/health?probe=1'); } catch (e) { return; }
+  if (h.vaxState === 'up' || h.vaxState === 'ready' || h.vaxState === 'idle') {
+    hideVaxWait();
+    loadCollection(false).catch(() => { /* the toast and banner say why */ });
+  } else {
+    showVaxWait(h.vaxState, h.canPowerOn);
+  }
+}
+async function powerOn() {
+  $('#vaxPower').disabled = true;
+  try {
+    await post('/api/vax/power-on', {});
+    showVaxWait('booting', true);
+    toast('Powering on the VAX…');
+  } catch (e) { toast(e.message, true); }
+  finally { $('#vaxPower').disabled = false; }
 }
 
 // ---------------------------------------------------------------- data
@@ -183,9 +243,13 @@ async function health() {
   const s = $('#status');
   try {
     const h = await api('/api/health');
-    const ok = h.connected && !h.lastError;
-    s.className = 'status ' + (ok ? 'ok' : (h.lastError ? 'bad' : ''));
-    $('#statusText').textContent = ok ? 'VAX online · ' + h.vax : (h.lastError ? 'VAX trouble: ' + h.lastError.slice(0, 60) : 'VAX idle · ' + h.vax);
+    const st = h.vaxState;
+    const ok = st === 'ready';
+    const text = { ready: 'VAX online · ' + h.vax, off: 'VAX powered off', booting: 'VAX starting…', 'logging-in': 'VAX logging in…',
+      'login-failed': 'VAX login refused', unreachable: 'VAX not answering' }[st];
+    s.className = 'status ' + (ok ? 'ok' : (st === 'login-failed' || st === 'unreachable' || h.lastError ? 'bad' : ''));
+    $('#statusText').textContent = text || (h.lastError ? 'VAX trouble: ' + h.lastError.slice(0, 60) : 'VAX idle · ' + h.vax);
+    if (st === 'off' && !vaxWait.timer) showVaxWait('off', h.canPowerOn);     // offer to power it on
   } catch (e) { s.className = 'status bad'; $('#statusText').textContent = 'web server unreachable'; }
 }
 
@@ -258,8 +322,11 @@ function init() {
     $('#dlgSell').returnValue = ''; $('#dlgSell').showModal();
   });
 
+  $('#vaxPower').addEventListener('click', powerOn);
   health(); setInterval(health, 15000);
-  loadCollection(false).catch(() => { $('#grid').innerHTML = '<p class="empty">The VAX is not answering. Check the tunnel and the Terminal drawer.</p>'; });
+  loadCollection(false).catch(e => {
+    $('#grid').innerHTML = e.vaxState ? '' : '<p class="empty">The VAX is not answering. Check the Terminal drawer.</p>';
+  });
 }
 document.addEventListener('DOMContentLoaded', init);
 })();
