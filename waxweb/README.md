@@ -24,7 +24,7 @@ for the browser.  (The UI even has a live "VAX terminal" drawer showing the scre
 | `fakevax.py` | a fake VAX (VMS login + a Python port of the WAXR screens) for development and tests |
 | `run_demo.py` | web app + fake VAX in one process (`python3 run_demo.py`, then http://localhost:8088) |
 | `tests/` | parser tests against **real captured VAX screens** + end-to-end tests against `fakevax` |
-| `deploy/` | systemd user units, env template, tunnel script, deploy script, VMS account setup |
+| `deploy/` | env template and the VMS account setup (the systemd unit and nginx location live in `POSIX/web-ttyd`) |
 
 Run the tests with `python3 -m unittest discover -s tests -v` (Python 3.7+; no dependencies).
 
@@ -73,22 +73,21 @@ on CPU and network), so the VAX could switch itself off under an open page.  Wat
 
 1. **The VAX side** -- create the dedicated low-privilege account and grant it the program + database:
    see `deploy/vms_account.txt`.
-2. **Reaching the VAX.**  A Raspberry Pi hosting SIMH cannot talk to its own pcap-bridged guest, so run the
-   tunnel from any machine that can reach the VAX: `VAX_IP=a.b.c.d deploy/tunnel.sh webhost`
-   (opens `webhost:127.0.0.1:2323 -> VAX:23`).  Or point `VAX_HOST`/`VAX_PORT` at wherever telnet is reachable.
-3. **On the web host:** `deploy/deploy.sh webhost` copies the app and installs the systemd *user* units; create
-   `~/.config/waxweb.env` from `deploy/waxweb.env.example` (mode 600) with the VMS account's password, then
-   `systemctl --user enable --now waxweb`.  (`loginctl enable-linger` keeps user services alive after logout.)
-4. Browse to `http://<web host>:8088`.  `WAXWEB_AUTH=user:pass` adds HTTP basic auth.
+2. **On cpbee** (where the simh VAX runs; it reaches OpenVMS at `192.168.20.30:23` directly, no tunnel):
+   put this repo's `VAX/waxweb` at `~/gh_cp/VAX/waxweb`, create `~/.config/waxweb.env` from
+   `deploy/waxweb.env.example` (mode 600) with the VMS account's password, then run `POSIX/web-ttyd/install.sh`.
+   It installs the user unit `web-ttyd-waxweb.service` (waxweb on `127.0.0.1:8088`) and the nginx location
+   that serves it at **https://192.168.10.1:8444/waxweb/** behind the same password as the terminal apps.
+3. To run it elsewhere, set `VAX_HOST`/`VAX_PORT` to where telnet is reachable and start `waxweb.py` yourself;
+   the page works at any path (its URLs are relative).
 
-`waxweb-demo.service` runs the same UI against the built-in fake VAX on port 8089 -- handy for a look
-without touching the VAX.
+`python3 run_demo.py` runs the same UI against the built-in fake VAX, with no VAX and no password.
 
 ## Security notes
 
 * The web app holds a VMS password: use the dedicated unprivileged account, keep the env file `chmod 600`,
   and never commit it.
-* The UI can add and *delete* records.  It has no login of its own unless you set `WAXWEB_AUTH`; keep it on
-  a trusted LAN or put it behind a reverse proxy with authentication.
+* The UI can add and *delete* records.  It listens on loopback only; nginx supplies the login (do not also set
+  `WAXWEB_AUTH`).  Elsewhere, keep it on a trusted LAN or behind a reverse proxy with authentication.
 * `/api/transcript` exposes the scraped screens (not the password) -- same trust boundary as the UI.
 * Input going to the VAX is stripped of control characters and truncated to the COBOL field widths.
