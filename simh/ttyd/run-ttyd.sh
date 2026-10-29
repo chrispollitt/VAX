@@ -20,12 +20,13 @@ case ${VAX_MODE:-login} in
            VAX_HINT=${VAX_HINT-Boot messages are on the cpvax console (from the list of apps).}
            title="cpvax (OpenVMS)";  port=7683; max=4 ;;
   console) VAX_HOST=${VAX_HOST:-127.0.0.1};     VAX_PORT=${VAX_PORT:-2323}; VAX_NAME="cpvax console"
-           VAX_BOOT_WAIT=${VAX_BOOT_WAIT:-60}
+           VAX_BOOT_WAIT=${VAX_BOOT_WAIT:-120}
            VAX_HINT=${VAX_HINT-}
+           VAX_ATTACH_DELAY=${VAX_ATTACH_DELAY:-60}; VAX_PROBE=${VAX_PROBE:-listen}   # not during the ROM self-test
            title="cpvax console";    port=7684; max=1 ;;
   *) echo "VAX_MODE must be login or console" >&2; exit 2 ;;
 esac
-export VAX_HOST VAX_PORT VAX_NAME VAX_BOOT_WAIT VAX_HINT
+export VAX_HOST VAX_PORT VAX_NAME VAX_BOOT_WAIT VAX_HINT VAX_ATTACH_DELAY VAX_PROBE
 exec "${TTYD:-ttyd}" -W -i "${IFACE:-lo}" -p "${PORT:-$port}" -m "${MAX_CLIENTS:-$max}" \
   -T vt100 ${BASE:+-b "$BASE"} \
   -t titleFixed="$title" -t disableLeaveAlert=true -t disableResizeOverlay=true \

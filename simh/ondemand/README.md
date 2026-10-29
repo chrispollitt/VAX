@@ -33,6 +33,34 @@ file with a `sed` that adds the telnet line after `SET CONSOLE BRK=0`; add the b
 
     -e "s#^SET CONSOLE BRK=0#SET CONSOLE BRK=0\nSET CONSOLE TELNET=$CONSOLE_PORT\nSET CONSOLE TELNET=BUFFERED=65536#" \
 
+## Known issue: the ROM self-test sometimes fails (`?53`)
+
+After a power-on the KA655 ROM runs a self-test of about 50 seconds.  Sometimes it ends with
+`?53 2 0A FF 00 0000 ... Normal operation not possible.` and the VAX sits at the `>>>` prompt without booting.
+It is **intermittent**.  Measured on cpbee with throwaway simh instances (same ROM, 512M, a copy of the real nvram):
+
+| console | when a client connected | self-test failed |
+|---|---|---|
+| buffered | nobody until the test was over (14 runs) | 0 |
+| not buffered | before the CPU started (6 runs) | 0 |
+| buffered | 2-3 s into the test (8 runs, quiet host) | 3 |
+| buffered | 1-3 s into the test, other simh instances running | 2 of 2 |
+
+and one failure through the web wrapper (1 of 2 valid runs) even though it connected only after the test.  So a client
+connecting during the self-test makes it more likely, but is not the only cause, and the cause is not found.
+`SET CPU IDLE` on or off, and the memory size (64M or 512M), made no difference in the runs above.
+Things the measurements ruled out:
+
+- **Not buffering the console** passes, but simh then **exits when the last console client disconnects**
+  (`Console Telnet connection lost ... Goodbye`), so it cannot work with windows that come and go.
+- **The first console client takes the buffered output**: a second client that connects later sees none of it.
+
+What is in place: the console window does not connect until the simulator is 60 s old (`VAX_ATTACH_DELAY`) and checks
+that the port is open without connecting (`VAX_PROBE=listen`), so it never touches the console during the self-test.
+That lowers the odds; it does not remove the failure.  If you see `Normal operation not possible`, no VMS is running,
+so it is safe to `sudo systemctl stop vax` and power it on again.  The next step, if it keeps happening, is a boot
+supervisor that notices the failure and restarts the VAX by itself (up to a few tries).
+
 ## How "idle" is decided
 
 Every minute, as root, `vax-ctl idle-check` samples simh's CPU time and the bytes over the `vaxtap` interface.  The VAX

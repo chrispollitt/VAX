@@ -16,13 +16,49 @@ name=${VAX_NAME:-cpvax}
 unit=${VAX_UNIT:-vax.service}
 boot_wait=${VAX_BOOT_WAIT:-900}
 hint=${VAX_HINT:-}
+# The console window must not touch the simh console while the KA655 ROM runs its self-test (about 50 s after the
+# simulator starts): a client connecting then sometimes makes the test fail with "?53 ... Normal operation not
+# possible", and the VAX does not boot.  VAX_ATTACH_DELAY holds the window back until the simulator is that old, and
+# VAX_PROBE=listen checks the port is open without connecting to it.  The buffered console then replays the whole boot.
+attach_delay=${VAX_ATTACH_DELAY:-0}
+probe=${VAX_PROBE:-connect}
 start_cmd=${VAX_START_CMD:-sudo -n /usr/bin/systemctl start $unit}
 conf=${VAX_CTL_CONF:-/etc/vax-ctl.conf}
 export TERM=vt100
 trap : INT
 
-answers() { nc -z -w 3 "$host" "$port" 2>/dev/null; }
+answers() {
+  if [ "$probe" = listen ]; then
+    ss -ltnH "sport = :$port" 2>/dev/null | grep -q .
+  else
+    nc -z -w 3 "$host" "$port" 2>/dev/null
+  fi
+}
 powered() { systemctl is-active --quiet "$unit" 2>/dev/null; }
+
+sim_age() {   # seconds since the simulator process started; 0 if it cannot be told
+  local pid age=0
+  pid=$(systemctl show -p MainPID --value "$unit" 2>/dev/null)
+  if [[ $pid =~ ^[0-9]+$ ]] && (( pid > 0 )); then
+    age=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+  fi
+  echo "${age:-0}"
+}
+
+# settle: hold back until the simulator is attach_delay seconds old (see above); fails if cancelled or it stops
+settle() {
+  (( attach_delay > 0 )) || return 0
+  local a k
+  while a=$(sim_age); (( a < attach_delay )); do
+    powered || { printf '\r\033[K%s stopped while starting (journalctl -u %s, on cpbee).\r\n' "$name" "$unit"; return 1; }
+    printf '\r  the simulator is running its self-test; connecting in %d s (the console then shows the whole boot)   (q: cancel) ' $((attach_delay - a))
+    if read -r -s -t 1 -n 1 k && [[ $k == [qQ] ]]; then
+      printf '\r\033[K'
+      return 1
+    fi
+  done
+  printf '\r\033[K'
+}
 
 idle_note() {
   local m
@@ -67,9 +103,11 @@ wait_for() {
 
 while :; do
   if answers; then
-    idle_note
-    telnet -E "$host" "$port"
-    printf '\r\n[%s: connection closed]\r\n' "$name"
+    if settle; then
+      idle_note
+      telnet -E "$host" "$port"
+      printf '\r\n[%s: connection closed]\r\n' "$name"
+    fi
   elif powered; then
     printf '%s is on but not answering yet.\r\n' "$name"
     wait_for "$boot_wait" && continue
