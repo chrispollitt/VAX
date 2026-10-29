@@ -6,6 +6,7 @@ VT100 escape sequences from what the host sends, and offers a small
 "send a line / read until a prompt appears" API.
 """
 import re
+import select
 import socket
 import time
 
@@ -24,6 +25,23 @@ _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 class TerminalError(Exception):
     """Connection lost, login failed, or the host stopped making sense."""
+
+
+class ConnectError(TerminalError):
+    """The TCP connection to the host could not be made (refused, no route, timed out)."""
+
+
+class VaxUnavailable(TerminalError):
+    """The VAX cannot be used right now, and says why in `state`:
+
+    off (powered off), booting (on, but not answering yet), unreachable (not answering,
+    and we cannot tell whether it is off), login-failed (VMS refused the login; we are
+    holding off so the account is not locked out by intrusion detection).
+    """
+
+    def __init__(self, state, message):
+        TerminalError.__init__(self, message)
+        self.state = state
 
 
 class PromptTimeout(TerminalError):
@@ -55,7 +73,7 @@ class Term(object):
         try:
             self.sock = socket.create_connection((self.host, self.port), timeout=timeout)
         except (OSError, socket.error) as e:
-            raise TerminalError("cannot connect to %s:%s (%s)" % (self.host, self.port, e))
+            raise ConnectError("cannot connect to %s:%s (%s)" % (self.host, self.port, e))
         self.sock.settimeout(1.0)
         self.buf, self._pending, self._sent_opts = "", b"", set()
 
@@ -70,6 +88,22 @@ class Term(object):
     @property
     def connected(self):
         return self.sock is not None
+
+    def alive(self):
+        """False if the host has closed (or broken) the connection since we last looked.
+
+        Anything it sent in the meantime is kept in the buffer.  Only call this while
+        nothing else is using the terminal.
+        """
+        if self.sock is None:
+            return False
+        try:
+            if select.select([self.sock], [], [], 0)[0]:
+                self._pump(0.05)
+        except (TerminalError, OSError, ValueError):
+            self.close()
+            return False
+        return True
 
     # -- telnet negotiation ----------------------------------------------
     def _raw_send(self, data):

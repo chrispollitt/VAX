@@ -17,6 +17,7 @@ for the browser.  (The UI even has a live "VAX terminal" drawer showing the scre
 | File | Purpose |
 |---|---|
 | `vaxterm.py` | tiny telnet terminal (IAC negotiation, VT100 stripping, send/read-until-prompt) |
+| `power.py` | is the on-demand VAX powered on (systemd), and power it on |
 | `waxscrape.py` | parsers for the roll-call / stats screens, and the session driver that plays the menus (pager, Y/N pickers, add/sell flows) |
 | `waxweb.py` | HTTP server: JSON API + static files, optional basic auth |
 | `static/` | the single-page UI (no build step): search, filters (LP / cassette / 12" / CCM / Canadian), add/sell dialogs, stats and terminal drawers |
@@ -42,6 +43,31 @@ Run the tests with `python3 -m unittest discover -s tests -v` (Python 3.7+; no d
 * **One session, one lock:** a single logged-in VMS session serves all requests, serialised by a lock; if the
   session breaks it is dropped and re-created on the next request.  The roll call is cached (default 120 s)
   and invalidated by every write.
+
+## When the VAX is on demand
+
+The simh VAX on cpbee is off until someone powers it on, and switches itself off after 30 idle minutes
+(`VAX/simh/ondemand/`).  waxweb copes with that:
+
+* **Off, booting, or refused.**  Set `VAX_UNIT=vax.service` and waxweb asks systemd whether the VAX is powered
+  (`/api/health` -> `vaxState`: `ready`, `idle`, `off`, `booting`, `up`, `logging-in`, `login-failed`,
+  `unreachable`).  A request while it is off fails at once with HTTP 503 and `vaxState` -- no 15-second hang.
+  Unset, the VAX is assumed always on and a silent VAX is reported as `unreachable`.
+* **Power on from the page.**  When the VAX is off the page shows a banner with a **Power on the VAX** button
+  (`POST /api/vax/power-on`, which runs `sudo -n /usr/bin/systemctl start $VAX_UNIT` -- the one thing
+  `ondemand/install.sh` lets the web user do; override with `VAX_START_CMD`).  The page then polls
+  `/api/health?probe=1` every 4 s (the probe opens and closes a telnet connection, so only the waiting page
+  asks) and reloads the collection when telnet answers.  Logging in then takes as long as VMS takes (up to 3 min).
+* **A hung-up session.**  Before each request the telnet socket is checked; if the VAX closed it (idle shutdown,
+  reboot) waxweb logs in afresh instead of failing.  `VAX_SESSION_IDLE` (default 600 s, 0 = never) logs out of VMS
+  when nobody has used the session, so a VMS `SHUTDOWN` never finds waxweb holding Rdb open.  A VAX that is
+  stopped without closing the connection (simh killed) is only noticed when a request times out.
+* **Refused logins.**  A rejected login (wrong or expired password) pauses logins for 1, then 5, then 15 minutes,
+  so repeated page loads cannot trip VMS intrusion detection and lock the account.  `vaxState` is `login-failed`
+  and the page says so.
+
+Not known yet: whether browsing through waxweb counts as activity to `vax-ctl`'s idle check (a roll call is light
+on CPU and network), so the VAX could switch itself off under an open page.  Watch `vax-ctl status` once.
 
 ## Running it for real
 

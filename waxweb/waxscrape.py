@@ -10,7 +10,9 @@ import threading
 import time
 from collections import deque
 
-from vaxterm import PromptTimeout, Term, TerminalError
+import socket
+
+from vaxterm import ConnectError, PromptTimeout, Term, TerminalError, VaxUnavailable
 
 # ---------------------------------------------------------------- prompts
 MENU = r"Your pick, music lover: \Z"
@@ -132,10 +134,25 @@ class WaxSession(object):
     """One logged-in VMS session running WAXR, shared by all web requests."""
 
     def __init__(self, host, port, user, password, wax_dir="DUA1:[SYSTEM.WAXR]",
-                 cache_ttl=120, log_size=600):
+                 cache_ttl=120, log_size=600, power=None, connect_timeout=5, prompt_wait=60,
+                 idle_close=0, clock=time.time):
+        """power: a power.Power for the on-demand VAX (None = assume it is always on).
+        connect_timeout / prompt_wait: how long to wait for the TCP connection and for the
+        Username prompt before deciding the VAX is off or still booting.
+        idle_close: log out of VMS after this many idle seconds (0 = never), so a VMS
+        shutdown or a stale connection never finds a half-used session.
+        """
         self.host, self.port = host, port
         self.user, self.password, self.wax_dir = user, password, wax_dir
         self.cache_ttl = cache_ttl
+        self.power = power
+        self.connect_timeout, self.prompt_wait = connect_timeout, prompt_wait
+        self.idle_close = idle_close
+        self.clock = clock
+        self._logging_in = False
+        self._login_failures = 0
+        self._blocked_until = 0        # no new login attempt before this time (after a refusal)
+        self._last_used = 0
         self.lock = threading.RLock()
         self.log = deque(maxlen=log_size)
         self._log_id = 0
@@ -154,11 +171,37 @@ class WaxSession(object):
         return [e for e in list(self.log) if e["id"] > since]
 
     # -- connect / login / start the program ---------------------------------
+    def _not_answering(self, why):
+        """The VAX did not answer: off, still booting, or we cannot tell."""
+        on = self.power.is_on() if self.power else None
+        if on is False:
+            return VaxUnavailable("off", "the VAX is powered off")
+        if on:
+            return VaxUnavailable("booting", "the VAX is starting up and not answering yet (%s)" % why)
+        return VaxUnavailable("unreachable", "the VAX is not answering (%s)" % why)
+
     def _start(self):
+        if self.clock() < self._blocked_until:
+            raise VaxUnavailable("login-failed", "VMS refused the login for %s; not trying again for %d s "
+                                 "(repeated failures lock the account)"
+                                 % (self.user, self._blocked_until - self.clock()))
+        if self.power and self.power.is_on() is False:
+            raise self._not_answering("")
+        self._logging_in = True
+        try:
+            self._login()
+        finally:
+            self._logging_in = False
+
+    def _login(self):
         t = self.term
-        t.connect()
         self.at_menu = False
-        t.read_until(r"Username: ?", 90)
+        try:
+            t.connect(self.connect_timeout)
+            t.read_until(r"Username: ?", self.prompt_wait)
+        except TerminalError as e:       # refused / no route / no prompt / closed on us
+            t.close()
+            raise self._not_answering(str(e))
         t.send(self.user)
         t.read_until(r"Password: ?", 30)
         t.send(self.password, log=False)
@@ -167,7 +210,11 @@ class WaxSession(object):
         idx, text = t.read_until([r"Username: ?\Z", r"authorization failure", r"(?:\A|\n)\$ \Z"], 180)
         if idx != 2:
             t.close()
-            raise TerminalError("VMS login failed for %s" % self.user)
+            self._login_failures += 1
+            wait = min(900, 60 * 5 ** (self._login_failures - 1))      # 1 min, 5 min, then 15
+            self._blocked_until = self.clock() + wait
+            raise VaxUnavailable("login-failed", "VMS login failed for %s" % self.user)
+        self._login_failures, self._blocked_until = 0, 0
         t.send('SET PROMPT="<<WAX>> "')
         t.read_until(r"\n<<WAX>> \Z", 60)
         self._dcl('SET TERMINAL/NOBROADCAST/WIDTH=132/PAGE=0/DEVICE_TYPE=VT100')
@@ -188,7 +235,9 @@ class WaxSession(object):
 
     def _ensure(self):
         if self.term.connected and self.at_menu:
-            return
+            if self.term.alive():
+                return
+            self.at_menu = False         # the VAX hung up on us (shutdown, idle limit): log in afresh
         self._start()
 
     def close(self):
@@ -203,6 +252,47 @@ class WaxSession(object):
             self.term.close()
             self.at_menu = False
 
+    def release_if_idle(self):
+        """Log out if the session has sat unused for idle_close seconds.  Never waits for the lock."""
+        if not self.idle_close or not self.lock.acquire(False):
+            return
+        try:
+            if self.term.connected and self.at_menu and self.clock() - self._last_used >= self.idle_close:
+                self.close()
+        finally:
+            self.lock.release()
+
+    # -- what state is the VAX in? (never waits for the lock; safe to call from a status poll) ------
+    def probe(self, timeout=2):
+        """True if something accepts connections on the VAX's telnet port.  This starts (and ends)
+        a VMS login process, so only call it while waiting for the VAX to come up."""
+        try:
+            socket.create_connection((self.host, self.port), timeout=timeout).close()
+            return True
+        except (OSError, socket.error):
+            return False
+
+    def vax_state(self, probe=False):
+        """ready (logged in) | logging-in | login-failed | off | booting | up (answers, not logged in;
+        only with probe=True) | unreachable | idle (no session, nothing known against it)."""
+        on = self.power.is_on() if self.power else None
+        if on is False:                  # powered off, whatever a stale connection of ours still believes
+            return "off"
+        if self._logging_in:
+            return "logging-in"
+        if self.term.connected:
+            return "ready"
+        if self.clock() < self._blocked_until:
+            return "login-failed"
+        if probe:
+            if self.probe():
+                return "up"
+            return "booting" if on else "unreachable"
+        return "idle"
+
+    def blocked_for(self):
+        return max(0, int(self._blocked_until - self.clock()))
+
     # -- running one operation -------------------------------------------------
     def _run(self, fn):
         """Run fn() against a session that is sitting at the main menu."""
@@ -213,7 +303,11 @@ class WaxSession(object):
                 result = fn()
                 self.at_menu = True          # every operation ends back at the menu
                 self.last_error = None
+                self._last_used = self.clock()
                 return result
+            except VaxUnavailable as e:
+                self.last_error = str(e)
+                raise
             except WaxError as e:
                 if e.at_menu:
                     self.at_menu = True
