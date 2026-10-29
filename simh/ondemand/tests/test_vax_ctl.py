@@ -12,6 +12,7 @@ import socket
 import tempfile
 import threading
 import time
+import types
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -234,6 +235,374 @@ class ShutdownTests(unittest.TestCase):
         port = s.getsockname()[1]
         s.close()
         self.assertFalse(vc.vms_shutdown("127.0.0.1", port, "SYSTEM", "x1", 2, "r", t_login=1))
+
+
+# ---------------------------------------------------------------- boot-watch
+#
+# What is real here: the console texts below were captured from throwaway simh instances on cpbee (same ROM, buffered
+# console, nobody attached), a passing self-test and a failing one (`?53 2 0A FF 00 0000`).  What is not: the failure
+# cannot be forced, so everything else here (the console, the clock, systemctl, the unit's pid) is a fake, and these
+# tests show the decisions and the counting, not that a real `systemctl restart vax.service` brings the VAX back.
+
+SIMH_HELLO = bytes([255, 251, 34, 255, 251, 3, 255, 251, 1, 255, 251, 0, 255, 253, 0])      # IAC WILL/DO ..., as simh sends
+BANNER = ("\n\r\nConnected to the MicroVAX 3900 simulator CON-TELNET device\r\n\n\r\n\x1b[c\r\n\rKA655-B V5.3, VMB 2.7\r\n"
+          "Performing normal system tests.\r\n")
+COUNT_1 = "40..39..38..37..36..35..34..33..32..31..\r\n"
+PASS_REST = ("30..29..28..27..26..25..\r\n24..23..22..21..20..19..18..17..16..15..14..13..12..11..10..09..\r\n"
+             "08..07..06..05..04..03..\r\nTests completed.\r\nLoading system software.\r\n(BOOT/R5:0 DUA0\r\n\r\n\r\n\n  2..\r\n"
+             "?4D DEVOFFLINE, DUA0\r\n?06 HLT INST\r\n        PC = 00000C1A\r\nFailure.\r\n>>>")
+FAIL_REST = ("\r\n?53 2 0A FF 00 0000\r\n\r\nP1=00000002  P2=00000028  P3=0000270E  P4=00D40077  P5=00000001\r\n"
+             "P6=FFFFFFFF  P7=00000000  P8=00000000  P9=20051BD0 P10=20051CE0\r\n"
+             "r0=00000004  r1=20140110  r2=AAFDCD91  r3=000300C8  r4=AAFDCD9B\r\n"
+             "r5=2004E8F9  r6=00018678  r7=000186C8  r8=0001ADAE ERF=82000180\r\n"
+             "30..29..28..27..26..25..\r\n24..23..22..21..20..19..18..17..16..15..14..13..12..11..10..09..\r\n"
+             "08..07..06..05..04..03..\r\nNormal operation not possible.\r\n\r\n>>>")
+PASSING = [(0, (BANNER + COUNT_1 + PASS_REST).encode("latin-1"))]
+FAILING = [(0, (BANNER + COUNT_1 + FAIL_REST).encode("latin-1"))]
+# the same, but the first read ends mid-test and the verdict comes 1.2 s later on the same connection
+SLOW_PASSING = [(0, (BANNER + COUNT_1).encode("latin-1")), (1.2, PASS_REST.encode("latin-1"))]
+SLOW_FAILING = [(0, (BANNER + COUNT_1).encode("latin-1")), (1.2, FAIL_REST.encode("latin-1"))]
+STALLED = [(0, (BANNER + COUNT_1).encode("latin-1"))]
+
+
+class FakeConsole(threading.Thread):
+    """The simh console on a telnet port with a buffered console: the first client gets the scripted text, (delay in
+    seconds, bytes) pieces, and its connection stays open.  A later client gets the same text again if `replay` (what a
+    simh built like cpbee's does, measured), and nothing if not (what the README once said it does)."""
+
+    def __init__(self, script, replay=False):
+        super().__init__(daemon=True)
+        self.script = script
+        self.replay = replay
+        self.srv = socket.socket()
+        self.srv.bind(("127.0.0.1", 0))
+        self.srv.listen(5)
+        self.srv.settimeout(0.1)
+        self.port = self.srv.getsockname()[1]
+        self.connections = 0
+        self.received = b""
+        self.closing = False
+        self.start()
+
+    def run(self):
+        while not self.closing:
+            try:
+                c, _ = self.srv.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            self.connections += 1
+            script = self.script if self.connections == 1 else [(0, d) for _, d in self.script] if self.replay else []
+            threading.Thread(target=self.serve, args=(c, script, self.connections == 1), daemon=True).start()
+
+    def serve(self, c, script, first):
+        c.settimeout(0.1)
+        try:
+            c.sendall(SIMH_HELLO)
+            for delay, data in script:
+                end = time.time() + delay
+                while time.time() < end and not self.closing:
+                    time.sleep(0.02)
+                c.sendall(data)
+            while not self.closing:
+                try:
+                    chunk = c.recv(4096)
+                except socket.timeout:
+                    continue
+                if not chunk:
+                    break
+                if first:
+                    self.received += chunk
+        except OSError:
+            pass
+        finally:
+            c.close()
+
+    def close(self):
+        self.closing = True
+        self.srv.close()
+
+
+class BootWatchTests(unittest.TestCase):
+    TM = {"first_age": 0.2, "quiet": 0.4, "read_limit": 3.0, "again": 0.5, "give_up_age": 2.5, "restart_window": 300.0}
+    PATCHED = ("BOOT_LOG", "BOOT_STATE", "unit_active", "main_pid", "proc_age", "systemctl")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.saved = {n: getattr(vc, n) for n in self.PATCHED}
+        self.t0, self.age_offset, self.pid, self.restart_rc = time.time(), 0.0, 4242, 0
+        self.calls, self.consoles = [], []
+        vc.BOOT_LOG = self.tmp.name + "/run/console-boot.txt"
+        vc.BOOT_STATE = self.tmp.name + "/lib/boot.json"
+        vc.unit_active = lambda cfg: True
+        vc.main_pid = lambda cfg: self.pid
+        vc.proc_age = lambda pid: time.time() - self.t0 + self.age_offset       # the "VAX" was started at setUp
+        vc.systemctl = self.fake_systemctl
+        del LOG[:]
+
+    def tearDown(self):
+        for n, v in self.saved.items():
+            setattr(vc, n, v)
+        for c in self.consoles:
+            c.close()
+        self.tmp.cleanup()
+
+    def fake_systemctl(self, *args):
+        self.calls.append(args)
+        return types.SimpleNamespace(returncode=self.restart_rc, stdout="", stderr="Failed to restart: fake")
+
+    def console(self, script, replay=False):
+        c = FakeConsole(script, replay)
+        self.consoles.append(c)
+        return c
+
+    def watch(self, console, retries=3, boot=None, **tm):
+        if boot is not None:
+            vc.save_state(boot, vc.BOOT_STATE)
+        cfg = dict(CFG, CONSOLE_HOST="127.0.0.1", CONSOLE_PORT=console.port, BOOT_RETRIES=retries)
+        return vc.cmd_boot_watch(cfg, None, dict(self.TM, **tm))
+
+    def state(self):
+        return vc.load_state(vc.BOOT_STATE)
+
+    def boot_text(self):
+        with open(vc.BOOT_LOG, encoding="latin-1", newline="") as f:
+            return f.read()
+
+    RESTART = [("--no-block", "restart", "vax.service")]
+
+    # --- the verdict on the text
+
+    def test_verdict_of_the_real_self_tests(self):
+        self.assertEqual(vc.boot_verdict(BANNER + COUNT_1 + PASS_REST), "passed")
+        self.assertEqual(vc.boot_verdict(BANNER + COUNT_1 + FAIL_REST), "failed")
+
+    def test_no_verdict_before_the_end_of_the_test(self):
+        self.assertIsNone(vc.boot_verdict(""))
+        self.assertIsNone(vc.boot_verdict(BANNER + COUNT_1))
+
+    def test_a_pass_wins_over_a_failure_text(self):
+        self.assertEqual(vc.boot_verdict(FAIL_REST + "Tests completed."), "passed")
+
+    # --- passing
+
+    def test_passed_selftest_is_not_restarted(self):
+        con = self.console(PASSING)
+        self.assertEqual(self.watch(con), 0)
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.state()["result"], "passed")
+        self.assertTrue(any("passed" in l for l in LOG), LOG)
+
+    def test_success_resets_the_counter(self):
+        con = self.console(PASSING)
+        self.watch(con, boot={"restarts": 2, "restarted_at": time.time()})
+        self.assertEqual(self.state()["restarts"], 0)
+        self.assertEqual(self.calls, [])
+
+    def test_slow_pass_is_read_on_the_same_connection_and_not_restarted(self):
+        con = self.console(SLOW_PASSING)
+        self.assertEqual(self.watch(con), 0)
+        self.assertEqual(self.calls, [])
+        self.assertEqual(con.connections, 2)                              # the reads share one; the second asks about replay
+        self.assertEqual(self.state()["result"], "passed")
+        self.assertGreater(time.time() - self.t0, 1.2)                    # it did wait for the second read
+
+    # --- failing
+
+    def test_failed_selftest_restarts_the_unit_once_and_counts_it(self):
+        con = self.console(FAILING)
+        self.assertEqual(self.watch(con), 0)
+        self.assertEqual(self.calls, self.RESTART)
+        st = self.state()
+        self.assertEqual((st["restarts"], st["result"]), (1, "failed"))
+        self.assertTrue(any("restarting vax.service" in l and "1 of 3" in l for l in LOG), LOG)
+
+    def test_slow_failure_is_found_on_the_second_read(self):
+        con = self.console(SLOW_FAILING)
+        self.assertEqual(self.watch(con), 0)
+        self.assertEqual(self.calls, self.RESTART)
+        self.assertEqual(con.connections, 1)
+
+    def test_counts_up_to_the_limit_then_gives_up_and_leaves_the_vax_alone(self):
+        for k in range(1, 4):                                             # BOOT_RETRIES=3: three restarts
+            self.t0 = time.time()
+            self.assertEqual(self.watch(self.console(FAILING)), 0, k)
+            self.assertEqual(self.state()["restarts"], k)
+        self.assertEqual(len(self.calls), 3)
+        self.t0 = time.time()
+        self.assertEqual(self.watch(self.console(FAILING)), 3)            # the fourth failure
+        self.assertEqual(len(self.calls), 3)                              # no fourth restart
+        self.assertTrue(any("Giving up" in l and ">>>" in l for l in LOG), LOG)
+        self.assertEqual(self.state()["result"], "gave up")
+
+    def test_a_new_power_on_after_giving_up_gets_a_new_count(self):
+        self.watch(self.console(FAILING), boot={"restarts": 3, "restarted_at": time.time()})      # at the limit
+        self.assertEqual(self.calls, [])
+        self.t0 = time.time()
+        self.assertEqual(self.watch(self.console(FAILING)), 0)             # given-up state is not "recent"
+        self.assertEqual(self.calls, self.RESTART)
+        self.assertEqual(self.state()["restarts"], 1)
+
+    def test_an_old_count_is_not_ours_any_more(self):
+        self.watch(self.console(FAILING), boot={"restarts": 3, "restarted_at": time.time() - 1000})
+        self.assertEqual(self.calls, self.RESTART)
+        self.assertEqual(self.state()["restarts"], 1)
+
+    def test_the_limit_comes_from_the_setting(self):
+        self.watch(self.console(FAILING), retries=0)
+        self.assertEqual(self.calls, [])
+        self.watch(self.console(FAILING), retries=1, boot={"restarts": 0})
+        self.assertEqual(self.calls, self.RESTART)
+
+    def test_a_restart_that_systemctl_refuses_is_reported(self):
+        self.restart_rc = 1
+        self.assertEqual(self.watch(self.console(FAILING)), 1)
+        self.assertTrue(any("failed" in l and "fake" in l for l in LOG), LOG)
+
+    def test_not_restarted_if_the_unit_changed_under_it(self):
+        con = self.console(FAILING)
+        threading.Timer(0.45, lambda: setattr(self, "pid", 9999)).start()   # after the first_age wait, before the verdict
+        self.assertEqual(self.watch(con), 0)
+        self.assertEqual(self.calls, [])
+
+    # --- no verdict, no action
+
+    def test_stalled_selftest_gets_no_verdict_and_no_restart(self):
+        con = self.console(STALLED)
+        self.assertEqual(self.watch(con), 2)
+        self.assertEqual(self.calls, [])
+        self.assertGreaterEqual(time.time() - self.t0, 2.5)               # waited up to the give-up age
+        self.assertTrue(any("no verdict" in l for l in LOG), LOG)
+
+    def test_console_that_cannot_be_reached_gets_no_verdict_and_no_restart(self):
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        cfg = dict(CFG, CONSOLE_PORT=port)
+        self.assertEqual(vc.cmd_boot_watch(cfg, None, dict(self.TM, give_up_age=1.5)), 2)
+        self.assertEqual(self.calls, [])
+
+    def test_a_vax_that_is_already_up_is_not_touched(self):
+        con = self.console(FAILING)
+        self.age_offset = 500.0
+        self.assertEqual(self.watch(con), 0)
+        self.assertEqual((self.calls, con.connections), ([], 0))          # not even connected: no console stolen
+
+    def test_unit_not_running(self):
+        vc.unit_active = lambda cfg: False
+        con = self.console(FAILING)
+        self.assertEqual(self.watch(con), 0)
+        self.assertEqual((self.calls, con.connections), ([], 0))
+
+    # --- the console text
+
+    def test_what_was_read_is_kept_for_the_console_window(self):
+        os.makedirs(os.path.dirname(vc.BOOT_LOG))
+        with open(vc.BOOT_LOG, "w") as f:
+            f.write("left over from the last boot\r\n")
+        self.watch(self.console(FAILING))
+        text = self.boot_text()
+        self.assertNotIn("left over", text)                               # truncated at the start of the cycle
+        self.assertIn("Performing normal system tests.", text)
+        self.assertIn("?53 2 0A FF 00 0000", text)
+        self.assertTrue(text.endswith(">>>"))
+        self.assertNotIn("\x1b[c", text)                                  # the terminal-identify query is left out
+        self.assertNotIn("\xff", text)                                    # and no telnet commands
+        self.assertEqual(os.stat(vc.BOOT_LOG).st_mode & 0o777, 0o644)     # readable by the web terminal's user
+
+    def test_the_copy_is_kept_while_the_vax_is_restarted(self):
+        con = self.console(FAILING, replay=True)
+        self.watch(con)
+        self.assertIn("Normal operation not possible", self.boot_text())
+        self.assertEqual(con.connections, 1)                              # no second connection before a restart
+
+    def test_the_copy_is_kept_if_the_console_does_not_replay_its_text(self):
+        con = self.console(PASSING, replay=False)
+        self.watch(con)
+        self.assertEqual(con.connections, 2)
+        self.assertIn("Tests completed", self.boot_text())
+        self.assertTrue(any("did not send the boot text again" in l for l in LOG), LOG)
+
+    def test_the_copy_is_dropped_if_the_console_replays_its_text(self):
+        con = self.console(PASSING, replay=True)                          # the window would print it twice otherwise
+        self.watch(con)
+        self.assertEqual(self.boot_text(), "")
+        self.assertTrue(any("no copy is kept" in l for l in LOG), LOG)
+        self.assertEqual(self.state()["result"], "passed")
+
+    def test_the_copy_is_dropped_after_giving_up_too_if_the_console_replays(self):
+        con = self.console(FAILING, replay=True)
+        self.assertEqual(self.watch(con, boot={"restarts": 3, "restarted_at": time.time()}), 3)
+        self.assertEqual(self.boot_text(), "")
+
+    def test_the_copy_is_kept_when_there_was_no_verdict(self):
+        self.watch(self.console(STALLED, replay=True))
+        self.assertIn("Performing normal system tests.", self.boot_text())
+
+    def test_the_telnet_options_are_refused(self):
+        con = self.console(PASSING)
+        self.watch(con)
+        time.sleep(0.3)
+        self.assertEqual(con.received, bytes([255, 254, 34, 255, 254, 3, 255, 254, 1, 255, 254, 0, 255, 252, 0]))
+
+
+class ReadQuietTests(unittest.TestCase):
+    def test_stops_when_the_line_has_been_quiet(self):
+        con = FakeConsole([(0, b"abc"), (0.1, b"def"), (5, b"late")])
+        try:
+            t = vc.Telnet("127.0.0.1", con.port)
+            t0, seen = time.time(), []
+            got = t.read_quiet(0.5, 10, seen.append)
+            self.assertEqual(got, "abcdef")
+            self.assertEqual("".join(seen), "abcdef")
+            self.assertLess(time.time() - t0, 2.0)
+            t.close()
+        finally:
+            con.close()
+
+    def test_stops_at_the_limit_while_text_keeps_coming(self):
+        con = FakeConsole([(0.2, b"x")] * 30)
+        try:
+            t = vc.Telnet("127.0.0.1", con.port)
+            t0 = time.time()
+            got = t.read_quiet(1.0, 1.0)
+            self.assertTrue(0.9 < time.time() - t0 < 2.0)
+            self.assertTrue(0 < len(got) < 29)
+            t.close()
+        finally:
+            con.close()
+
+
+class BootWatchSetupTests(unittest.TestCase):
+    def test_boot_retries_and_console_defaults(self):
+        self.assertEqual(vc.DEFAULTS["BOOT_RETRIES"], 3)
+        self.assertEqual((vc.DEFAULTS["CONSOLE_HOST"], vc.DEFAULTS["CONSOLE_PORT"]), ("127.0.0.1", 2323))
+
+    def test_boot_retries_from_the_config_file(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".conf", delete=False) as f:
+            f.write("BOOT_RETRIES=5\nCONSOLE_PORT=2400\n")
+        try:
+            cfg = vc.load_conf(f.name)
+        finally:
+            os.unlink(f.name)
+        self.assertEqual((cfg["BOOT_RETRIES"], cfg["CONSOLE_PORT"]), (5, 2400))
+
+    def test_age_of_a_process(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(d + "/proc/77")
+            hz = os.sysconf("SC_CLK_TCK")
+            fields = ["S"] + ["0"] * 18 + ["3000"]                        # starttime is field 22 of proc(5)
+            with open(d + "/proc/77/stat", "w") as f:
+                f.write("77 (simh-vax) " + " ".join(fields) + " 0 0\n")
+            with open(d + "/proc/uptime", "w") as f:
+                f.write("%f 0.0\n" % (3000.0 / hz + 61.5))
+            old, vc.PROC = vc.PROC, d + "/proc"
+            try:
+                self.assertAlmostEqual(vc.proc_age(77), 61.5, places=3)
+            finally:
+                vc.PROC = old
 
 
 if __name__ == "__main__":

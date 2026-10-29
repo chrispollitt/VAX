@@ -1,0 +1,19 @@
+[Unit]
+Description=Watch the simh VAX (cpvax) ROM self-test and restart the VAX if it fails
+ConditionPathExists=/usr/local/sbin/vax-ctl
+After=vax.service
+# stopped and restarted with vax.service; started by it through the drop-in vax.service.d/boot-watch.conf
+PartOf=vax.service
+
+[Service]
+# not oneshot or ExecStartPost: vax.service must be active while this waits about a minute for the self-test
+Type=simple
+ExecStart=/usr/local/sbin/vax-ctl boot-watch
+# boot.json (the count of automatic restarts); and the console text for the web console window, which outlives the run
+StateDirectory=vax-ctl
+RuntimeDirectory=vax-ctl
+RuntimeDirectoryPreserve=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes

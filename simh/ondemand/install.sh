@@ -11,6 +11,9 @@
 #   /etc/vax-ctl.conf                        limits (kept if it exists)
 #   /etc/vax-ctl.cred                        VMS account for SHUTDOWN, root only (asked for if it does not exist)
 #   /etc/systemd/system/vax-idle.{service,timer}   run `vax-ctl idle-check` every minute
+#   /etc/systemd/system/vax-boot-watch.service     after each start of the VAX, read the console and restart it if the
+#                                            ROM self-test failed (`vax-ctl boot-watch`)
+#   /etc/systemd/system/vax.service.d/boot-watch.conf   makes every start of vax.service start that watcher
 #   /etc/sudoers.d/vax-web                   lets this user run `systemctl start vax.service`, and nothing else
 # Needs the simulator's console to be buffered (SET CONSOLE TELNET=BUFFERED in vax.ini); see README.md.
 set -euo pipefail
@@ -20,6 +23,7 @@ sbin=/usr/local/sbin/vax-ctl
 conf=/etc/vax-ctl.conf
 cred=/etc/vax-ctl.cred
 unitdir=/etc/systemd/system
+dropin=$unitdir/vax.service.d/boot-watch.conf
 sudoers=/etc/sudoers.d/vax-web
 ini=${VAX_INI:-/var/simh/vax/vax.ini}
 webuser=${WEB_USER:-$(id -un)}
@@ -33,9 +37,12 @@ run() { if (( dry )); then say "  would run: $*"; else "$@"; fi; }
 die() { echo "install.sh: $*" >&2; exit 1; }
 
 if (( undo )); then
-  say "Removing vax-ctl, its timer and the sudoers rule (kept: $conf, $cred)."
+  say "Removing vax-ctl, its timer, the boot watcher and the sudoers rule (kept: $conf, $cred)."
   run sudo systemctl disable --now vax-idle.timer || true
-  run sudo rm -f "$unitdir/vax-idle.timer" "$unitdir/vax-idle.service" "$sudoers" "$sbin"
+  run sudo systemctl stop vax-boot-watch.service || true                 # the watcher only; the VAX is not touched
+  run sudo rm -f "$unitdir/vax-idle.timer" "$unitdir/vax-idle.service" "$unitdir/vax-boot-watch.service" "$dropin" \
+      "$sudoers" "$sbin"
+  run sudo rmdir --ignore-fail-on-non-empty "$(dirname "$dropin")"
   run sudo systemctl daemon-reload
   exit 0
 fi
@@ -61,13 +68,20 @@ say "  1. install $sbin and, if absent, $conf"
 say "  2. ask for the VMS account vax-ctl logs in with to run SHUTDOWN, unless $cred exists"
 say "  3. install the vax-idle timer (every minute) and start it"
 say "  4. let '$webuser' run exactly 'systemctl start vax.service' without a password ($sudoers)"  # allowlist secret
+say "  5. install vax-boot-watch.service and a drop-in on vax.service, so each start of the VAX is watched: if the ROM"
+say "     self-test fails the VAX is restarted (up to BOOT_RETRIES times).  It takes effect at the next start of the VAX."
 if (( ! dry )); then
   read -r -p "Proceed? [y/N] " ans
   [[ $ans == [yY]* ]] || { say "Nothing changed."; exit 1; }
 fi
 
 run sudo install -m 755 "$here/vax-ctl" "$sbin"
-if sudo test -e "$conf"; then say "$conf exists: kept"; else run sudo install -m 644 "$here/vax-ctl.conf" "$conf"; fi
+if sudo test -e "$conf"; then
+  say "$conf exists: kept"
+  sudo grep -q '^BOOT_RETRIES=' "$conf" || say "  (it has no BOOT_RETRIES line: the default, 3 restarts, applies; see $here/vax-ctl.conf)"
+else
+  run sudo install -m 644 "$here/vax-ctl.conf" "$conf"
+fi
 
 # --- the VMS account (VMS user names and passwords are letters, digits, $ and _) ---
 if sudo test -e "$cred"; then
@@ -89,6 +103,9 @@ fi
 # --- the timer ---
 run sudo install -m 644 "$here/vax-idle.service" "$unitdir/vax-idle.service"
 run sudo install -m 644 "$here/vax-idle.timer" "$unitdir/vax-idle.timer"
+run sudo install -m 644 "$here/vax-boot-watch.service" "$unitdir/vax-boot-watch.service"
+run sudo install -d -m 755 "$(dirname "$dropin")"
+run sudo install -m 644 "$here/vax.service.d/boot-watch.conf" "$dropin"
 run sudo systemctl daemon-reload
 run sudo systemctl enable --now vax-idle.timer
 
@@ -102,4 +119,4 @@ else
   sudo install -m 440 -o root -g root "$tmp" "$sudoers"
 fi
 
-say "Done.  Power it on from https://192.168.10.1:8444/cpvax-console/ and watch it boot.  status: vax-ctl status; log: journalctl -u vax-idle"
+say "Done.  Power it on from https://192.168.10.1:8444/cpvax-console/ and watch it boot.  status: vax-ctl status; log: journalctl -u vax-idle -u vax-boot-watch"

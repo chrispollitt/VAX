@@ -22,11 +22,14 @@ case ${VAX_MODE:-login} in
   console) VAX_HOST=${VAX_HOST:-127.0.0.1};     VAX_PORT=${VAX_PORT:-2323}; VAX_NAME="cpvax console"
            VAX_BOOT_WAIT=${VAX_BOOT_WAIT:-120}
            VAX_HINT=${VAX_HINT-}
-           VAX_ATTACH_DELAY=${VAX_ATTACH_DELAY:-60}; VAX_PROBE=${VAX_PROBE:-listen}   # not during the ROM self-test
+           # not during the ROM self-test, nor while vax-boot-watch reads the console (58 s to about 63 s after the
+           # start); what it read is printed first, so the window still shows the self-test
+           VAX_ATTACH_DELAY=${VAX_ATTACH_DELAY:-75}; VAX_PROBE=${VAX_PROBE:-listen}
+           VAX_BOOT_LOG=${VAX_BOOT_LOG-/run/vax-ctl/console-boot.txt}
            title="cpvax console";    port=7684; max=1 ;;
   *) echo "VAX_MODE must be login or console" >&2; exit 2 ;;
 esac
-export VAX_HOST VAX_PORT VAX_NAME VAX_BOOT_WAIT VAX_HINT VAX_ATTACH_DELAY VAX_PROBE
+export VAX_HOST VAX_PORT VAX_NAME VAX_BOOT_WAIT VAX_HINT VAX_ATTACH_DELAY VAX_PROBE VAX_BOOT_LOG
 exec "${TTYD:-ttyd}" -W -i "${IFACE:-lo}" -p "${PORT:-$port}" -m "${MAX_CLIENTS:-$max}" \
   -T vt100 ${BASE:+-b "$BASE"} \
   -t titleFixed="$title" -t disableLeaveAlert=true -t disableResizeOverlay=true \
