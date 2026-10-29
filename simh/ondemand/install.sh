@@ -51,7 +51,7 @@ client and then EXITS, so a VAX powered on from the web would die before anyone 
 after the telnet one, then run this again:
 
   sudo -u simh cp -a $ini $ini.bak.\$(date +%Y%m%d-%H%M%S)
-  sudo -u simh sed -i '/^SET CONSOLE TELNET=2323/a SET CONSOLE TELNET=BUFFERED=65536' $ini
+  sudo -u simh sed -i '/^SET CONSOLE TELNET=2323/a SET CONSOLE TELNET=BUFFERED=65536' $ini
 EOF
   exit 1
 fi
