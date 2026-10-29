@@ -55,9 +55,9 @@ what the WAXR program itself allows.
    (If your Rdb SQL rejects one of those GRANT forms, tell me the error text; the usual
    fix is only the spelling of the grantee.)
 
-4. Put the credentials where the web app reads them (on the web host, NOT in the repo):
-   $ ssh webhost
-   $ cp ~/waxweb/deploy/waxweb.env.example ~/.config/waxweb.env     # or create it by hand
+4. Put the credentials where the web app reads them (on cpbee, NOT in the repo):
+   $ ssh cpbee
+   $ cp ~/gh_cp/VAX/waxweb/deploy/waxweb.env.example ~/.config/waxweb.env     # or create it by hand
    $ chmod 600 ~/.config/waxweb.env
    $ nano ~/.config/waxweb.env      # set VAX_PASS to the password from step 1
 

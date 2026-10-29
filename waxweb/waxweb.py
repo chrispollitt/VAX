@@ -3,12 +3,11 @@
 
     python3 waxweb.py            # configuration comes from environment variables
 
-  VAX_HOST / VAX_PORT   where the VAX's telnet is reachable (default 127.0.0.1:2323,
-                        i.e. the end of the ssh tunnel)
+  VAX_HOST / VAX_PORT   where OpenVMS answers telnet (default 192.168.20.30:23, the cpvax)
   VAX_USER / VAX_PASS   the dedicated VMS account (never logged)
   VAX_WAXDIR            directory holding RUN_WAXR.COM   (default DUA1:[SYSTEM.WAXR])
-  WAXWEB_BIND / _PORT   where to serve the web UI        (default 0.0.0.0:8088)
-  WAXWEB_AUTH           optional "user:password" for HTTP basic auth
+  WAXWEB_BIND / _PORT   where to serve the web UI        (default 127.0.0.1:8088, for nginx to proxy)
+  WAXWEB_AUTH           optional "user:password" for HTTP basic auth (leave unset behind nginx)
   CACHE_TTL             seconds the roll call is cached  (default 120)
 
   The VAX on cpbee is on demand (off until powered on, off again when idle):
@@ -48,7 +47,7 @@ class App(object):
     def __init__(self):
         self.power = Power(env("VAX_UNIT") or None, env("VAX_START_CMD") or None)
         self.session = WaxSession(
-            env("VAX_HOST", "127.0.0.1"), int(env("VAX_PORT", "2323")),
+            env("VAX_HOST", "192.168.20.30"), int(env("VAX_PORT", "23")),
             env("VAX_USER", ""), env("VAX_PASS", ""),
             wax_dir=env("VAX_WAXDIR", "DUA1:[SYSTEM.WAXR]"),
             cache_ttl=int(env("CACHE_TTL", "120")),
@@ -196,7 +195,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     global APP
     APP = App()
-    bind, port = env("WAXWEB_BIND", "0.0.0.0"), int(env("WAXWEB_PORT", "8088"))
+    bind, port = env("WAXWEB_BIND", "127.0.0.1"), int(env("WAXWEB_PORT", "8088"))
     httpd = ThreadingHTTPServer((bind, port), Handler)
     httpd.daemon_threads = True
     print("WAX & TAPE web front end on http://%s:%d  (VAX at %s:%s as %s)"

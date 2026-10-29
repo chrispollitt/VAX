@@ -93,7 +93,7 @@ function hideVaxWait() {
 }
 async function pollVax() {
   let h;
-  try { h = await api('/api/health?probe=1'); } catch (e) { return; }
+  try { h = await api('api/health?probe=1'); } catch (e) { return; }
   if (h.vaxState === 'up' || h.vaxState === 'ready' || h.vaxState === 'idle') {
     hideVaxWait();
     loadCollection(false).catch(() => { /* the toast and banner say why */ });
@@ -104,7 +104,7 @@ async function pollVax() {
 async function powerOn() {
   $('#vaxPower').disabled = true;
   try {
-    await post('/api/vax/power-on', {});
+    await post('api/vax/power-on', {});
     showVaxWait('booting', true);
     toast('Powering on the VAX…');
   } catch (e) { toast(e.message, true); }
@@ -114,14 +114,14 @@ async function powerOn() {
 // ---------------------------------------------------------------- data
 async function loadCollection(refresh) {
   const data = await work(refresh ? 'Re-running the roll call on the VAX…' : null,
-    () => api('/api/collection' + (refresh ? '?refresh=1' : '')));
+    () => api('api/collection' + (refresh ? '?refresh=1' : '')));
   state.data = data;
   if (data.quip) $('#quip').textContent = '“' + data.quip + '” — straight off the VAX';
   render();
   loadStats(true);
 }
 async function loadStats(quiet) {
-  try { state.stats = await api('/api/stats'); renderCounts(); renderStats(); }
+  try { state.stats = await api('api/stats'); renderCounts(); renderStats(); }
   catch (e) { if (!quiet) toast(e.message, true); }
 }
 
@@ -226,7 +226,7 @@ function closeDrawers() {
 }
 async function pollTerm() {
   try {
-    const j = await api('/api/transcript?since=' + state.termId);
+    const j = await api('api/transcript?since=' + state.termId);
     if (!j.entries.length) return;
     const pre = $('#termBody');
     const stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 40;
@@ -242,7 +242,7 @@ async function pollTerm() {
 async function health() {
   const s = $('#status');
   try {
-    const h = await api('/api/health');
+    const h = await api('api/health');
     const st = h.vaxState;
     const ok = st === 'ready';
     const text = { ready: 'VAX online · ' + h.vax, off: 'VAX powered off', booting: 'VAX starting…', 'logging-in': 'VAX logging in…',
@@ -311,10 +311,10 @@ function init() {
   $('#addAlbum').addEventListener('click', () => openForm('#dlgAlbum', f => fillArtists(f.artist)));
   $('#addCopy').addEventListener('click', () => openForm('#dlgCopy', f => { fillArtists(f.artist); fillAlbums(f.artist.value, f.album); }));
   $('#dlgCopy select[name=artist]').addEventListener('change', e => fillAlbums(e.target.value, $('#dlgCopy select[name=album]')));
-  wireDialog('#dlgArtist', d => work('Typing at the VAX…', () => post('/api/artist', { name: d.name, origin: d.origin, hair: +d.hair })).then(r => r.message));
-  wireDialog('#dlgAlbum', d => work('Typing at the VAX…', () => post('/api/album', { artist: d.artist, title: d.title, year: +d.year || 0, label: d.label, genre: d.genre })).then(r => r.message));
-  wireDialog('#dlgCopy', d => work('Typing at the VAX…', () => post('/api/copy', { artist: d.artist, album: d.album, media: d.media, grade: d.grade, price: d.price, year: +d.year || 0, notes: d.notes })).then(r => r.message));
-  wireDialog('#dlgSell', () => work('Haggling at the record fair…', () => post('/api/copy/sell', pendingSell)).then(r => r.message));
+  wireDialog('#dlgArtist', d => work('Typing at the VAX…', () => post('api/artist', { name: d.name, origin: d.origin, hair: +d.hair })).then(r => r.message));
+  wireDialog('#dlgAlbum', d => work('Typing at the VAX…', () => post('api/album', { artist: d.artist, title: d.title, year: +d.year || 0, label: d.label, genre: d.genre })).then(r => r.message));
+  wireDialog('#dlgCopy', d => work('Typing at the VAX…', () => post('api/copy', { artist: d.artist, album: d.album, media: d.media, grade: d.grade, price: d.price, year: +d.year || 0, notes: d.notes })).then(r => r.message));
+  wireDialog('#dlgSell', () => work('Haggling at the record fair…', () => post('api/copy/sell', pendingSell)).then(r => r.message));
   $('#grid').addEventListener('click', e => {
     const b = e.target.closest('.sell'); if (!b) return;
     pendingSell = { artist: b.dataset.artist, album: b.dataset.album, index: +b.dataset.index, media: b.dataset.media, notes: b.dataset.notes };
