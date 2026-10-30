@@ -322,14 +322,22 @@ SHUTDOWN_PROMPTS = [
 ]
 
 
+def loose(phrase):
+    """A regex for `phrase` that still matches when the terminal has wrapped the line in the middle of a word: cpvax
+    printed "How many minutes until final shu<CR><LF>tdown [0]: " (2026-10-29), which a plain match never found.  Any
+    whitespace may sit between two letters."""
+    return r"\s*".join(re.escape(ch) for ch in phrase if not ch.isspace())
+
+
 LOGIN_QUIET = 4.0                                    # seconds of silence that end "VMS is still logging us in"
+SETTLE = 1.0                                         # seconds of silence that mean a SHUTDOWN question is complete
 MARKER_COMMAND = 'WRITE SYS$OUTPUT F$FAO("VAXCTL-!AS","OK")'      # prints VAXCTL-OK; its echo does not contain that text
 MARKER_REPLY = "VAXCTL-OK"
 MARKER_TRIES = 4                                     # t_login is split between these
 
 
 def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=None, t_quiet=LOGIN_QUIET,
-                 t_progress=30.0):
+                 t_progress=30.0, t_settle=SETTLE):
     """Log in to OpenVMS and run @SYS$SYSTEM:SHUTDOWN.  True once VMS has gone down (the connection closed or it
     said so); False on anything unexpected, with the transcript logged (never the password).  After the last
     prompt VMS is silent for the whole warning period, so the only bound is one deadline: the warning plus 5 minutes.
@@ -347,8 +355,9 @@ def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=N
 
     def redact(s):                                   # the password is blanked in case anything echoed it
         return s.replace(secret, "<password>") if secret else s
-    prompts = [rx(p) for p, _ in SHUTDOWN_PROMPTS]
-    done = rx(r"shutdown complete|system halted|halting")
+    prompts = [rx(loose(p)) for p, _ in SHUTDOWN_PROMPTS]
+    done = rx("|".join([loose("shutdown complete"), loose("system halted"), "halting"]))
+    last_answered = -1                               # index of the furthest SHUTDOWN question answered
     try:
         t = Telnet(host, port)
     except OSError as e:
@@ -406,14 +415,29 @@ def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=N
             if text.strip():
                 log("vms> " + _clean(text)[-300:])
             if i is None:
-                log("shutdown: VMS closed the connection (it is going down)")
-                return True
+                # only a close after the last question was answered means VMS is going down; a close in the middle of
+                # the dialogue is a session that died, and the VAX is still up
+                if last_answered == len(prompts) - 1:
+                    log("shutdown: VMS closed the connection (it is going down)")
+                    return True
+                log("shutdown: VMS closed the connection before the SHUTDOWN questions were all answered")
+                return False
             if i == len(prompts):
                 log("shutdown: VMS reports the shutdown is complete")
                 return True
+            # The question's key words have arrived, but its line may not be finished (cpvax: " node CPVAX [NO]? " still
+            # to come): answering now sends the reply early.  Wait until VMS has been quiet for a moment.
+            rest = t.read_quiet(t_settle, t_settle * 5)
+            if rest.strip():
+                log("vms> " + _clean(rest)[-200:])
             answer = SHUTDOWN_PROMPTS[i][1].format(minutes=minutes, reason=reason)
             log("vms< " + (answer or "(default)"))
-            t.send(answer)
+            try:
+                t.send(answer)
+            except OSError as e:
+                log("shutdown: could not send the answer (%s): the session is gone" % e)
+                return False
+            last_answered = max(last_answered, i)
     except socket.timeout as e:
         log("shutdown: timed out waiting for VMS (%s); transcript above. The VAX is left running." % e)
         # what VMS sent that matched nothing, with the escapes visible (a login procedure that asks a question, a

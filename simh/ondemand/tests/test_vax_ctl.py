@@ -8,6 +8,7 @@ import importlib.machinery
 import importlib.util
 import os
 import re
+import select
 import socket
 import tempfile
 import threading
@@ -126,7 +127,7 @@ class FakeVMS(threading.Thread):
     SHUTDOWN dialogue.  `prompts` are (text, answer it must get); `ending` is "close" or "hang"."""
 
     def __init__(self, user, phrase, prompts, ending="close", banner_split=False, after_login=None,
-                 banner=None, prompt=b"$ ", answer_marker=True, swallow_markers=0):
+                 banner=None, prompt=b"$ ", answer_marker=True, swallow_markers=0, drop_after=None):
         super().__init__(daemon=True)
         self.user, self.phrase, self.prompts, self.ending = user, phrase, prompts, ending
         self.banner_split = banner_split
@@ -136,6 +137,8 @@ class FakeVMS(threading.Thread):
         self.answer_marker = answer_marker      # False: echo the marker command but never print its answer
         self.swallow_markers = swallow_markers  # the first N marker commands vanish, as in cpvax's SET TERMINAL/INQUIRE
         self.swallowed = 0
+        self.drop_after = drop_after            # the session dies after this many SHUTDOWN questions were answered
+        self.early_answers = 0                  # answers that came before the question line was complete
         self.srv = socket.socket()
         self.srv.bind(("127.0.0.1", 0))
         self.srv.listen(1)
@@ -195,13 +198,20 @@ class FakeVMS(threading.Thread):
                 return
             c.sendall(b"VAXCTL-OK\r\n" + self.prompt)
             self.got.append(self.readline(c))                             # @SYS$SYSTEM:SHUTDOWN
-            for text, want in self.prompts:
-                c.sendall(text.encode())
+            for k, (text, want) in enumerate(self.prompts):
+                for n, part in enumerate(text.split("\x00")):             # "\x00" marks where the line arrives in pieces
+                    if n:
+                        ready, _, _ = select.select([c], [], [], 0.15)
+                        if ready:
+                            self.early_answers += 1                       # the client answered before the line was complete
+                    c.sendall(part.encode())
                 got = self.readline(c)
                 self.got.append(got)
                 if got != want:
                     c.sendall(b"\r\n%DCL-W-IVVERB, unrecognized command\r\n")
                     return
+                if self.drop_after is not None and k + 1 >= self.drop_after:
+                    return                                                # the session dies in the middle of the dialogue
             if self.ending == "hang":
                 c.recv(1)
                 return
@@ -216,8 +226,9 @@ class FakeVMS(threading.Thread):
 PROMPTS = [
     # as cpvax printed them on 2026-10-29 (OpenVMS VAX V7.3): this question comes first, and its default is NO
     ("\r\nCPVAX$DUA1:[SYSTEM]\r\n\r\n\r\n        SHUTDOWN -- Perform an Orderly System Shutdown\r\n"
-     "                    on node CPVAX\r\n\rDo you really want to shutdown node CPVAX [NO]? ", "YES"),
-    ("\r\nHow many minutes until final shutdown [0]: ", "2"),
+     # (the question arrives in two pieces, and the next one is wrapped at 80 columns in the middle of a word, as on cpvax)
+     "                    on node CPVAX\r\n\rDo you really want to shutdown\x00 node CPVAX [NO]? ", "YES"),
+    (" How many minutes until final shu\r\ntdown [0]: ", "2"),
     ("Reason for shutdown [Standalone]: ", "Idle timeout (vax-ctl)"),
     ("Do you want to spin down the disk volumes? [NO]: ", "NO"),
     ("Do you want to invoke the site-specific shutdown procedure? [YES]: ", "YES"),
@@ -231,6 +242,7 @@ def shutdown_against(fake, user="SYSTEM", phrase="x1", **kw):
     del LOG[:]
     kw.setdefault("t_quiet", 0.3)                    # the real wait for VMS to go quiet is 4 s
     kw.setdefault("t_progress", 0.5)                 # and the real progress line is every 30 s
+    kw.setdefault("t_settle", 0.3)                   # and the real wait for a question to be complete is 1 s
     return vc.vms_shutdown("127.0.0.1", fake.port, user, phrase, 2, "Idle timeout (vax-ctl)",
                            t_login=3, t_down=3, **kw)
 
@@ -280,6 +292,26 @@ class ShutdownTests(unittest.TestCase):
         fake.join(5)
         self.assertEqual(fake.got[2:4], [vc.MARKER_COMMAND, "@SYS$SYSTEM:SHUTDOWN"])
         self.assertTrue(any("logged in" in l for l in LOG), LOG)
+
+    def test_the_answer_waits_for_the_end_of_the_question(self):
+        # cpvax, 2026-10-29: the reply "YES" was sent as soon as "Do you really want to shutdown" had arrived, before
+        # " node CPVAX [NO]? ".  The fake sends that question in two pieces and notes an answer that comes between.
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS)
+        self.assertTrue(shutdown_against(fake))
+        fake.join(5)
+        self.assertEqual(fake.early_answers, 0)
+
+    def test_a_question_wrapped_in_the_middle_of_a_word_is_matched(self):
+        self.assertTrue(re.search(vc.loose("how many minutes until final shutdown"),
+                                  "How many minutes until final shu\r\ntdown [0]: ", re.I))
+        self.assertTrue(re.search(vc.loose("shutdown complete"), "SYSTEM SHUTDOWN\r\n COMPLETE", re.I))
+        self.assertFalse(re.search(vc.loose("final shutdown"), "final startup", re.I))
+
+    def test_a_session_that_dies_mid_dialogue_is_not_a_shutdown(self):
+        # a closed connection means "VMS is going down" only after the LAST question was answered
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS, drop_after=2)
+        self.assertFalse(shutdown_against(fake))
+        self.assertTrue(any("before the SHUTDOWN questions were all answered" in l for l in LOG), LOG)
 
     def test_a_stall_after_the_shutdown_command_is_reported_while_it_happens(self):
         # 2026-10-29: after "@SYS$SYSTEM:SHUTDOWN" nothing matched and the log said nothing for 7 minutes.  Now every
