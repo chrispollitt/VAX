@@ -131,7 +131,12 @@ Sorry.
 ```
 
 Needs **Rdb** (the full development kit, for the SQL precompiler) and DEC COBOL, with the Rdb
-monitor running (`@SYS$STARTUP:RMONSTART`). Put the files in one directory (ASCII transfer):
+monitor running (`@SYS$STARTUP:RMONSTART`). Nothing starts it at boot unless you tell it to: on
+cpvax a fresh boot left Rdb stopped and WAXR failed with `%RDB-E-UNAVAILABLE2` /
+`%SYSTEM-F-PROTINSTALL` (shown by the program only as a garbled `SQLCODE` and "The shelf is bare");
+`@SYS$STARTUP:RMONSTART` fixed it by hand. [`waxr/vms-config/SYSTARTUP_VMS.COM`](waxr/vms-config/SYSTARTUP_VMS.COM)
+is cpvax's site startup file with that line added, so it happens at every boot. Put the files in one
+directory (ASCII transfer):
 
 ```
 $ @BUILD_WAXR            ! create + load the database, precompile, compile, link

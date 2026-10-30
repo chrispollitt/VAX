@@ -415,5 +415,10 @@ $!@SYS$STARTUP:NETLIB_STARTUP  <-- OLD
 $! Start http server
 $ submit /name=httpd_vax /log_file=cpvax$dua1:[lighttpd.log]httpd_vax.log cpvax$dua1:[lighttpd.bin]httpd_vax
 $!
+$!
+$! Start Rdb: the monitor, and the protected images (RDMSHRP.EXE) that SQL$ and WAXR need.  Nothing else starts it, and
+$! without it WAXR fails with %RDB-E-UNAVAILABLE2 / %SYSTEM-F-PROTINSTALL.  Added 29-OCT-2026.
+$ IF F$SEARCH("SYS$STARTUP:RMONSTART.COM") .NES. "" THEN @SYS$STARTUP:RMONSTART
+$!
 $! Exit
 $ EXIT
