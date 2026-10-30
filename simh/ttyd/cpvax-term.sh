@@ -54,23 +54,53 @@ sim_age() {   # seconds since the simulator process started; 0 if it cannot be t
   echo "${age:-0}"
 }
 
+# Something to watch while the VAX starts: a spinner that turns four times a second, and either a bar that fills over
+# a known time (bar_line) or a block that sweeps to and fro when the wait has no known length (bounce_line).
+spin_frames='|/-\'
+frame=0
+
+bar_line() {   # bar_line ELAPSED TOTAL LABEL
+  local e=$1 t=$2 w=30 f i bar=
+  (( e > t )) && e=$t
+  f=$(( e * w / t ))
+  for (( i = 0; i < w; i++ )); do if (( i < f )); then bar+='█'; else bar+='░'; fi; done
+  printf '\r  %s [%s] %3d%%  %s\033[K' "${spin_frames:$((frame++ % 4)):1}" "$bar" $(( e * 100 / t )) "$3"
+}
+
+bounce_line() {   # bounce_line LABEL
+  local w=30 b=4 span pos i bar=
+  span=$(( w - b )); pos=$(( (frame / 2) % (2 * span) )); (( pos > span )) && pos=$(( 2 * span - pos ))
+  for (( i = 0; i < w; i++ )); do if (( i >= pos && i < pos + b )); then bar+='█'; else bar+='░'; fi; done
+  printf '\r  %s [%s] %s\033[K' "${spin_frames:$((frame++ % 4)):1}" "$bar" "$1"
+}
+
 # settle: hold back until the simulator is attach_delay seconds old (see above); fails if cancelled or it stops
 settle() {
   (( attach_delay > 0 )) || return 0
-  local a k prev=0
+  local a k prev=0 sub stage intro=0
   while a=$(sim_age); (( a < attach_delay )); do
     powered || { printf '\r\033[K%s stopped while starting (journalctl -u %s, on cpbee).\r\n' "$name" "$unit"; return 1; }
     if (( a > 0 )); then          # 0 means the age could not be told
       if (( a + 5 < prev )); then   # younger than a moment ago: the simulator was restarted
-        printf '\r\033[K%s was restarted while starting (the boot watcher does that when the self-test fails: journalctl -u vax-boot-watch).\r\n' "$name"
+        printf '\r\033[K%s was restarted (the boot watcher does that when the ROM self-test fails).\r\n' "$name"
       fi
       prev=$a
     fi
-    printf '\r  the simulator is running its self-test; connecting in %d s (the console then shows the whole boot)   (q: cancel) ' $((attach_delay - a))
-    if read -r -s -t 1 -n 1 k && [[ $k == [qQ] ]]; then
-      printf '\r\033[K'
-      return 1
+    if (( ! intro )); then
+      printf '\r\033[KThe simulator runs its ROM self-test, then the boot supervisor checks it.\r\n'
+      printf 'The console connects after that and shows the whole boot.\r\n\r\n'
+      intro=1
     fi
+    if   (( a < 55 )); then stage="KA655 self-test"
+    elif (( a < 68 )); then stage="checking the self-test"
+    else stage="VMS is starting"; fi
+    for sub in 1 2 3 4; do
+      bar_line "$a" "$attach_delay" "$stage, $((attach_delay - a)) s  (q: cancel)"
+      if read -r -s -t 0.25 -n 1 k && [[ $k == [qQ] ]]; then
+        printf '\r\033[K'
+        return 1
+      fi
+    done
   done
   printf '\r\033[K'
 }
@@ -108,7 +138,7 @@ power_on() {
 
 # wait_for SECONDS: until the target answers, with a progress line; q cancels; gives up if the VAX stops
 wait_for() {
-  local limit=$1 t0=$SECONDS spin='|/-\' i=0 e k
+  local limit=$1 t0=$SECONDS e k sub
   [ -z "$hint" ] || printf '%s\r\n' "$hint"
   until answers; do
     e=$((SECONDS - t0))
@@ -121,12 +151,13 @@ wait_for() {
       printf 'Look at the cpvax console: VMS may still have its old address (see setup-vax.sh, FIRST BOOT).\r\n'
       return 1
     fi
-    printf '\r  %s  waiting for %s to answer at %s:%s ...  %d:%02d   (q: cancel) ' \
-      "${spin:$((i++ % 4)):1}" "$name" "$host" "$port" $((e / 60)) $((e % 60))
-    if read -r -s -t 1 -n 1 k && [[ $k == [qQ] ]]; then
-      printf '\r\033[K'
-      return 1
-    fi
+    for sub in 1 2 3 4; do
+      bounce_line "waiting for $name  $((e / 60)):$(printf %02d $((e % 60)))  (q: cancel)"
+      if read -r -s -t 0.25 -n 1 k && [[ $k == [qQ] ]]; then
+        printf '\r\033[K'
+        return 1
+      fi
+    done
   done
   printf '\r\033[K'
 }
