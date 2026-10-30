@@ -91,6 +91,10 @@ The `SET FILE/PROTECTION` is needed because the directory is created without del
   they are undefined, and removes them at the end. Existing definitions are never touched.
   A `NAOFIL` from AUTHORIZE now stops the run in step 2 instead of being read as "account
   not found".
+* **`/FLAGS=(NODISUSER)` is added.** A new account is copied from the DEFAULT record, which
+  on cpvax has DISUSER set, so the first `VMSGUEST` was created disabled and every login
+  gave "User authorization failure" (found 2026-10-29 with `MCR AUTHORIZE SHOW`: `Flags:
+  LockPwd DisUser DisMail`). Step 4 now clears it and step 7 warns if it is still set.
 * **Extra hardening** beyond the original list: `/ACCOUNT`, `/FLAGS=(DISMAIL)`, `/NOBATCH`.
   Not done on purpose: `/NONETWORK` (it could lock visitors out of FTP and similar) and
   anything that limits memory or I/O quotas. Add them as `CALL MOD_ONE` lines if wanted.

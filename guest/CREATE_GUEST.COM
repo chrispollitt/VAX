@@ -221,8 +221,12 @@ $ CALL MOD_ONE "/FLAGS=(DISMAIL)" "M7"
 $ IF .NOT. $STATUS THEN MOD_BAD = MOD_BAD + 1
 $ CALL MOD_ONE "/NOBATCH" "M8"
 $ IF .NOT. $STATUS THEN MOD_BAD = MOD_BAD + 1
+$ ! A new account copies the DEFAULT record, which on this system has DISUSER set,
+$ ! and DISUSER means "User authorization failure" at every login.
+$ CALL MOD_ONE "/FLAGS=(NODISUSER)" "M9"
+$ IF .NOT. $STATUS THEN MOD_BAD = MOD_BAD + 1
 $ ST_HARD = "done"
-$ IF MOD_BAD .GT. 0 THEN ST_HARD = "done, but ''MOD_BAD' of 8 MODIFY runs reported errors"
+$ IF MOD_BAD .GT. 0 THEN ST_HARD = "done, but ''MOD_BAD' of 9 MODIFY runs reported errors"
 $ SAY ""
 $ !
 $ ! ---------------------------------------------------------------- step 5
@@ -292,6 +296,12 @@ $ SAY "  WARNING: the password shows as pre-expired.  With LOCKPWD, visitors"
 $ SAY "  cannot log in.  Fix:  $ MCR AUTHORIZE MODIFY ''G_USER' /NOPWDEXPIRED"
 $ FINAL = FAILSTAT
 $NOT_PREEXP:
+$ CALL QSEARCH "''F_VERO'" "DisUser"
+$ IF .NOT. $STATUS THEN GOTO NOT_DISUSER
+$ SAY "  WARNING: the account is flagged DisUser (disabled); nobody can log in."
+$ SAY "  Fix:  $ MCR AUTHORIZE MODIFY ''G_USER' /FLAGS=NODISUSER"
+$ FINAL = FAILSTAT
+$NOT_DISUSER:
 $ IF ST_ADD .NES. "done" THEN FINAL = FAILSTAT
 $ IF ST_DIR .EQS. "FAILED" THEN FINAL = FAILSTAT
 $ IF ST_LOGIN .EQS. "FAILED" THEN FINAL = FAILSTAT
