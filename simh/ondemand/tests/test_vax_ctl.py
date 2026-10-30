@@ -125,10 +125,11 @@ class FakeVMS(threading.Thread):
     """One connection of OpenVMS' telnet service: negotiation noise, Username/Password, a DCL prompt, then the
     SHUTDOWN dialogue.  `prompts` are (text, answer it must get); `ending` is "close" or "hang"."""
 
-    def __init__(self, user, phrase, prompts, ending="close", banner_split=False):
+    def __init__(self, user, phrase, prompts, ending="close", banner_split=False, after_login=None):
         super().__init__(daemon=True)
         self.user, self.phrase, self.prompts, self.ending = user, phrase, prompts, ending
         self.banner_split = banner_split
+        self.after_login = after_login          # bytes sent instead of the DCL prompt, then silence
         self.srv = socket.socket()
         self.srv.bind(("127.0.0.1", 0))
         self.srv.listen(1)
@@ -161,6 +162,10 @@ class FakeVMS(threading.Thread):
             self.got.append(self.readline(c))
             if self.got[0] != self.user or self.got[1] != self.phrase:
                 c.sendall(b"\r\n%LOGIN-F-INVPWD, invalid password\r\n")
+                return
+            if self.after_login is not None:
+                c.sendall(self.after_login)
+                c.recv(1)                                                 # then say nothing until the client leaves
                 return
             c.sendall(b"\r\n    Last interactive login on Monday, 26-OCT-2026 10:00\r\n$ ")
             self.got.append(self.readline(c))
@@ -227,6 +232,22 @@ class ShutdownTests(unittest.TestCase):
     def test_a_prompt_that_never_comes_leaves_the_vax_alone(self):
         fake = FakeVMS("SYSTEM", "x1", PROMPTS[:2], ending="hang")
         self.assertFalse(shutdown_against(fake))
+        self.assertTrue(any("left running" in l for l in LOG), LOG)
+
+    def test_a_login_that_never_reaches_a_prompt_shows_what_vms_sent(self):
+        # the real failure of 2026-10-29: after the password VMS sent neither "$ " nor a login failure, and the log
+        # said only "no match for [...]".  Now it shows what did arrive, escapes visible, and blanks the password.
+        word = "zq7secret"
+        fake = FakeVMS("SYSTEM", word, PROMPTS,
+                       after_login=("\r\n\x1b[?25h Echoed: %s\r\nYour password has expired; you must set a new one."
+                                    "\r\nNew password: " % word).encode())
+        self.assertFalse(shutdown_against(fake, phrase=word))
+        text = "\n".join(LOG)
+        self.assertIn("matched nothing", text)
+        self.assertIn("must set a new one", text)             # the question VMS asked is there to read
+        self.assertIn("\\x1b", text)                           # escape characters are shown, not interpreted
+        self.assertIn("<password>", text)                      # the echoed password is blanked
+        self.assertNotIn(word, text)
         self.assertTrue(any("left running" in l for l in LOG), LOG)
 
     def test_nothing_listening(self):

@@ -371,6 +371,12 @@ def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=N
             t.send(answer)
     except socket.timeout as e:
         log("shutdown: timed out waiting for VMS (%s); transcript above. The VAX is left running." % e)
+        # what VMS sent that matched nothing, with the escapes visible (a login procedure that asks a question, a
+        # prompt that is not "$ ", terminal queries); the password is blanked in case anything echoed it
+        pending = t.buf[-500:]
+        if secret:
+            pending = pending.replace(secret, "<password>")
+        log("shutdown: text from VMS that matched nothing (last %d characters, escapes shown): %r" % (len(pending), pending))
         return False
     finally:
         t.close()
