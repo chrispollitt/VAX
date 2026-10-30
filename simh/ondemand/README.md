@@ -9,7 +9,7 @@ The simh VAX on cpbee is off until someone asks for it, and switches itself off,
 
 | file | what |
 |---|---|
-| `vax-ctl` | `idle-check` (what the timer runs), `shutdown` (log in to VMS, run `@SYS$SYSTEM:SHUTDOWN`, then stop the unit), `boot-watch` (the boot supervisor), `status` |
+| `vax-ctl` | `idle-check` (what the timer runs), `shutdown` (log in to VMS, run its SHUTDOWN command, then stop the unit), `boot-watch` (the boot supervisor), `status` |
 | `vax-ctl.conf` | idle limit and thresholds, `BOOT_RETRIES` (`/etc/vax-ctl.conf`) |
 | `vax-idle.service`, `vax-idle.timer` | run `vax-ctl idle-check` once a minute, as root |
 | `vax-boot-watch.service`, `vax.service.d/boot-watch.conf` | run `vax-ctl boot-watch` after every start of `vax.service`, as root; the drop-in is what makes `vax.service` start it |
@@ -127,16 +127,30 @@ thresholds depend on how quiet a logged-in VMS really is under simh (`SET CPU ID
 ## The orderly shutdown
 
 A plain `systemctl stop vax` is a power cut for the emulated machine, so the stop always goes through VMS: `vax-ctl`
-logs in over telnet to OpenVMS (`192.168.20.30`) with the account in `/etc/vax-ctl.cred` (root only, mode 600), runs
-`@SYS$SYSTEM:SHUTDOWN`, answers its prompts (2 minutes' warning to logged-in users, no reboot, defaults for the rest),
-and when VMS goes down waits 20 seconds and stops the unit.  If anything is unexpected (login refused, a prompt it does
-not know, VMS not going down) it logs the transcript (never the password), leaves the VAX **running**, and tries again
-after 15 minutes.  Nothing is ever stopped by force.
+logs in over telnet to OpenVMS (`192.168.20.30`) with the account in `/etc/vax-ctl.cred` (root only, mode 600), types
+the command in `SHUTDOWN_COMMAND` (default `SHUTDOWN`: cpvax's own command, which asks one question, "Do you really
+want to shutdown node CPVAX [NO]?", and uses its defaults for the rest, as typed by hand), answers `YES`, and waits for
+VMS to go down.  Once VMS has halted, simh ends by itself (`Infinite loop, PC: 9E3FB4D3 (BRB 9E3FB4D3)`, `Goodbye`: that
+line is VMS's halted state, not an error), and `vax-ctl` makes sure the unit is stopped.  The VAX is then off.
 
-**Untested against the real VMS**: the dialogue is tested against a fake that follows `SHUTDOWN.COM`'s prompts as
-documented for V7.3, but the first real run should be watched: `sudo vax-ctl shutdown` while you are on the console
-window.  The account needs the privileges `SHUTDOWN` checks (SYSTEM has them); a dedicated account is better than
-SYSTEM if you create one.
+What the first real runs (2026-10-29) taught it, all now in `tests/`:
+
+- **Login:** the login procedure runs `SET TERMINAL/INQUIRE` (two terminal queries nobody answers, about 30 seconds) and
+  the DCL prompt is `CPVAX$DUA1:[SYSTEM]`, not `$ `.  So a login is recognised by a marker command (it types
+  `WRITE SYS$OUTPUT F$FAO("VAXCTL-!AS","OK")` and waits for `VAXCTL-OK`), resent until VMS answers, never by a prompt.
+- **Questions** are matched even when the terminal wraps a line in the middle of a word (`final shu`/`tdown`), and each
+  answer waits until VMS has finished the line.
+- **Unknown questions** that show a default (`[later]:`) are answered with it (at most 6), so a longer dialogue, such as
+  plain `@SYS$SYSTEM:SHUTDOWN` (set `SHUTDOWN_COMMAND=@SYS$SYSTEM:SHUTDOWN`), does not stall it.
+- **Success** is the connection closing after VMS printed its `%SHUTDOWN-I-` messages (or the last known question was
+  answered).  A session that dies in the middle of the questions is not a shutdown.
+- Every 30 seconds while it waits it logs what VMS has sent (password blanked), and a failure logs the text that matched
+  nothing, so a stall can be read from `journalctl -u vax-idle` (or the job's journal) afterwards.
+
+If anything is unexpected it leaves the VAX **running** and tries again after 15 minutes.  Nothing is ever stopped by
+force.  The account needs the privileges `SHUTDOWN` checks (SYSTEM has them); a dedicated account is better than SYSTEM
+if you create one.  Each connection to the VMS telnet port, even a port probe, makes VMS start a login process and log
+a "Remote interactive login failure" security alarm if it drops before logging in: harmless, but do not probe it in a loop.
 
 ## The sudoers line
 

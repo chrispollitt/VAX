@@ -127,7 +127,7 @@ class FakeVMS(threading.Thread):
     SHUTDOWN dialogue.  `prompts` are (text, answer it must get); `ending` is "close" or "hang"."""
 
     def __init__(self, user, phrase, prompts, ending="close", banner_split=False, after_login=None,
-                 banner=None, prompt=b"$ ", answer_marker=True, swallow_markers=0, drop_after=None):
+                 banner=None, prompt=b"$ ", answer_marker=True, swallow_markers=0, drop_after=None, finale=None):
         super().__init__(daemon=True)
         self.user, self.phrase, self.prompts, self.ending = user, phrase, prompts, ending
         self.banner_split = banner_split
@@ -138,6 +138,7 @@ class FakeVMS(threading.Thread):
         self.swallow_markers = swallow_markers  # the first N marker commands vanish, as in cpvax's SET TERMINAL/INQUIRE
         self.swallowed = 0
         self.drop_after = drop_after            # the session dies after this many SHUTDOWN questions were answered
+        self.finale = finale                    # what VMS prints after the last question (default: SHUTDOWN COMPLETE)
         self.early_answers = 0                  # answers that came before the question line was complete
         self.srv = socket.socket()
         self.srv.bind(("127.0.0.1", 0))
@@ -215,7 +216,8 @@ class FakeVMS(threading.Thread):
             if self.ending == "hang":
                 c.recv(1)
                 return
-            c.sendall(b"\r\nSYSTEM SHUTDOWN COMPLETE - use console to halt system\r\n")
+            c.sendall(self.finale if self.finale is not None
+                      else b"\r\nSYSTEM SHUTDOWN COMPLETE - use console to halt system\r\n")
         except (socket.timeout, OSError):
             pass
         finally:
@@ -233,6 +235,7 @@ PROMPTS = [
     ("Do you want to spin down the disk volumes? [NO]: ", "NO"),
     ("Do you want to invoke the site-specific shutdown procedure? [YES]: ", "YES"),
     ("Should an automatic system reboot be performed? [NO]: ", "NO"),
+    ("When will the system be rebo\r\noted [later]: ", ""),       # asked even after NO; wrapped as on cpvax
     ("Shutdown options [NONE]: ", ""),
 ]
 OPENING = [("", "@SYS$SYSTEM:SHUTDOWN")]
@@ -243,6 +246,7 @@ def shutdown_against(fake, user="SYSTEM", phrase="x1", **kw):
     kw.setdefault("t_quiet", 0.3)                    # the real wait for VMS to go quiet is 4 s
     kw.setdefault("t_progress", 0.5)                 # and the real progress line is every 30 s
     kw.setdefault("t_settle", 0.3)                   # and the real wait for a question to be complete is 1 s
+    kw.setdefault("command", "@SYS$SYSTEM:SHUTDOWN")  # the long dialogue, which most tests exercise (the default is SHUTDOWN)
     return vc.vms_shutdown("127.0.0.1", fake.port, user, phrase, 2, "Idle timeout (vax-ctl)",
                            t_login=3, t_down=3, **kw)
 
@@ -306,6 +310,46 @@ class ShutdownTests(unittest.TestCase):
                                   "How many minutes until final shu\r\ntdown [0]: ", re.I))
         self.assertTrue(re.search(vc.loose("shutdown complete"), "SYSTEM SHUTDOWN\r\n COMPLETE", re.I))
         self.assertFalse(re.search(vc.loose("final shutdown"), "final startup", re.I))
+
+    def test_cpvaxs_own_shutdown_command_asks_one_question(self):
+        # what Chris typed by hand on 2026-10-29: SHUTDOWN, one question, YES, then %SHUTDOWN-I- lines and the end
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS[:1],
+                       finale=(b"\r\n%SHUTDOWN-I-OPERATOR, this terminal is now an operator's console\r\n"
+                               b"%SHUTDOWN-I-DISLOGINS, interactive logins will now be disabled\r\n"))
+        self.assertTrue(shutdown_against(fake, command="SHUTDOWN"))
+        fake.join(5)
+        self.assertEqual(fake.got[2:5], [vc.MARKER_COMMAND, "SHUTDOWN", "YES"])
+
+    def test_the_command_is_configurable(self):
+        self.assertEqual(vc.DEFAULTS["SHUTDOWN_COMMAND"], "SHUTDOWN")
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS)
+        self.assertTrue(shutdown_against(fake, command="@SYS$SYSTEM:SHUTDOWN"))
+        fake.join(5)
+        self.assertEqual(fake.got[3], "@SYS$SYSTEM:SHUTDOWN")
+
+    def test_a_question_nobody_listed_is_answered_with_its_default(self):
+        # cpvax asked "When will the system be rebooted [later]:" after a NO; the next version of VMS may ask more
+        extra = ("Flush the widgets before the shutdown? [YES]: ", "")
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS[:-1] + [extra] + PROMPTS[-1:])
+        self.assertTrue(shutdown_against(fake))
+        fake.join(5)
+        self.assertEqual(fake.got[4:], [w for _, w in PROMPTS[:-1]] + [""] + [""])
+        self.assertTrue(any("not a question this program knows" in l for l in LOG), LOG)
+
+    def test_runaway_unknown_questions_stop_it(self):
+        many = [("Question number %d? [X]: " % k, "") for k in range(vc.MAX_UNKNOWN + 3)]
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS[:1] + many)
+        self.assertFalse(shutdown_against(fake))
+        self.assertTrue(any("questions this program does not know" in l for l in LOG), LOG)
+
+    def test_the_shutdown_messages_show_it_has_started_even_without_a_complete_line(self):
+        # after the last answer cpvax prints %SHUTDOWN-I-... lines and then the session goes away: that is a shutdown,
+        # but a session that dies in the middle of the questions (below) is not
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS[:2], finale=(b"\r\n%SHUTDOWN-I-OPERATOR, this terminal is now an "
+                                                          b"operator's console\r\n%SHUTDOWN-I-DISLOGINS, interactive "
+                                                          b"logins will now be disabled\r\n"))
+        self.assertTrue(shutdown_against(fake))
+        self.assertTrue(any("has started the shutdown" in l for l in LOG), LOG)
 
     def test_a_session_that_dies_mid_dialogue_is_not_a_shutdown(self):
         # a closed connection means "VMS is going down" only after the LAST question was answered

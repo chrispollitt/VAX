@@ -56,6 +56,7 @@ DEFAULTS = {
     "CPU_PCT_MAX": 3.0,
     "NET_BYTES_PER_MIN_MAX": 60000,
     "SHUTDOWN_WARN_MINUTES": 2,
+    "SHUTDOWN_COMMAND": "SHUTDOWN",
     "SHUTDOWN_RETRY_MINUTES": 15,
     "SETTLE_SECONDS": 20,
     "VMS_HOST": "192.168.20.30",
@@ -318,8 +319,10 @@ SHUTDOWN_PROMPTS = [
     (r"spin down the disk volumes", "NO"),
     (r"site-specific shutdown procedure", "YES"),
     (r"automatic system reboot", "NO"),
+    (r"when will the system be rebooted", ""),       # asked even after NO above (found 2026-10-29); the default is "later"
     (r"shutdown options", ""),
 ]
+MAX_UNKNOWN = 6                                      # unlisted questions answered with their default before giving up
 
 
 def loose(phrase):
@@ -337,8 +340,11 @@ MARKER_TRIES = 4                                     # t_login is split between 
 
 
 def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=None, t_quiet=LOGIN_QUIET,
-                 t_progress=30.0, t_settle=SETTLE):
-    """Log in to OpenVMS and run @SYS$SYSTEM:SHUTDOWN.  True once VMS has gone down (the connection closed or it
+                 t_progress=30.0, t_settle=SETTLE, command="SHUTDOWN"):
+    """Log in to OpenVMS and run `command`: cpvax's own SHUTDOWN command, which asks one question ("Do you really want
+    to shutdown node CPVAX [NO]?") and takes the defaults for the rest, as typed by hand on 2026-10-29.  (The plain
+    @SYS$SYSTEM:SHUTDOWN, with no parameters, interviews at length; the dialogue below copes with that too.)
+    True once VMS has gone down (the connection closed or it
     said so); False on anything unexpected, with the transcript logged (never the password).  After the last
     prompt VMS is silent for the whole warning period, so the only bound is one deadline: the warning plus 5 minutes.
 
@@ -358,6 +364,13 @@ def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=N
     prompts = [rx(loose(p)) for p, _ in SHUTDOWN_PROMPTS]
     done = rx("|".join([loose("shutdown complete"), loose("system halted"), "halting"]))
     last_answered = -1                               # index of the furthest SHUTDOWN question answered
+    # VMS prints %SHUTDOWN-I-... lines once the questions are over and it is shutting down.  Any other question that
+    # shows its default ("[later]: ") is answered with that default, so a SHUTDOWN.COM that asks one more thing than
+    # this program knows (cpvax asked "When will the system be rebooted" after a NO) does not stall it.
+    started = rx(r"%SHUTDOWN-I-")
+    unknown = rx(r"\[[^\]\r\n]{1,30}\]\s*[:?]\s*$")
+    shutdown_started = False
+    answered_unknown = 0
     try:
         t = Telnet(host, port)
     except OSError as e:
@@ -399,14 +412,15 @@ def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=N
                 return False
             break
         log("vms> logged in (the marker command was answered, try %d)" % attempt)
-        t.send("@SYS$SYSTEM:SHUTDOWN")
+        t.send(command)
         deadline = time.time() + t_down
         while True:
             left = deadline - time.time()
             if left <= 0:
                 raise socket.timeout("VMS did not go down within %d s" % t_down)
+            n = len(prompts)
             try:
-                i, text = t.expect(prompts + [done], min(left, t_progress))
+                i, text = t.expect(prompts + [done, started, unknown], min(left, t_progress))
             except socket.timeout:
                 # still waiting: say what has arrived so far, so a stall can be diagnosed while it is happening
                 log("vms> still waiting for a SHUTDOWN question or the end (%d s left); nothing matched yet; text so far: %r"
@@ -415,19 +429,46 @@ def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=N
             if text.strip():
                 log("vms> " + _clean(text)[-300:])
             if i is None:
-                # only a close after the last question was answered means VMS is going down; a close in the middle of
-                # the dialogue is a session that died, and the VAX is still up
-                if last_answered == len(prompts) - 1:
+                # a close means VMS is going down only if the shutdown had started (its %SHUTDOWN-I- messages) or the
+                # last known question was answered; a close in the middle of the dialogue is a session that died
+                if shutdown_started or last_answered == n - 1:
                     log("shutdown: VMS closed the connection (it is going down)")
                     return True
                 log("shutdown: VMS closed the connection before the SHUTDOWN questions were all answered")
                 return False
-            if i == len(prompts):
+            if i == n:
                 log("shutdown: VMS reports the shutdown is complete")
                 return True
+            if i == n + 1:
+                if not shutdown_started:
+                    log("shutdown: VMS has started the shutdown (its %SHUTDOWN-I- messages); waiting for it to finish")
+                shutdown_started = True
+                continue
+            if i == n + 2:                           # a question this program does not know, with a default shown
+                if shutdown_started:
+                    continue
+                if answered_unknown >= MAX_UNKNOWN:
+                    log("shutdown: more than %d questions this program does not know: stopping, the VAX is left running"
+                        % MAX_UNKNOWN)
+                    return False
+                rest = t.buf
+                t.buf = ""                           # the rest of this line, if it is already here, is not a new question
+                rest += t.read_quiet(t_settle, t_settle * 5)
+                if rest.strip():
+                    log("vms> " + _clean(rest)[-200:])
+                log("vms< (the default: not a question this program knows)")
+                try:
+                    t.send("")
+                except OSError as e:
+                    log("shutdown: could not send the answer (%s): the session is gone" % e)
+                    return False
+                answered_unknown += 1
+                continue
             # The question's key words have arrived, but its line may not be finished (cpvax: " node CPVAX [NO]? " still
             # to come): answering now sends the reply early.  Wait until VMS has been quiet for a moment.
-            rest = t.read_quiet(t_settle, t_settle * 5)
+            rest = t.buf
+            t.buf = ""                               # whatever of this line is already here (" [0]: ") belongs to this question
+            rest += t.read_quiet(t_settle, t_settle * 5)
             if rest.strip():
                 log("vms> " + _clean(rest)[-200:])
             answer = SHUTDOWN_PROMPTS[i][1].format(minutes=minutes, reason=reason)
@@ -459,9 +500,10 @@ def cmd_shutdown(cfg, args=None):
     if not cred.get("VMS_USER") or not cred.get("VMS_PASSWORD"):
         log("shutdown: no VMS_USER / VMS_PASSWORD in %s: cannot do an orderly shutdown, so not stopping the VAX" % cfg["CRED_FILE"])
         return 3
-    log("shutdown: asking VMS to shut down (%d minute warning)" % cfg["SHUTDOWN_WARN_MINUTES"])
+    log("shutdown: asking VMS to shut down with the command %r (SHUTDOWN_WARN_MINUTES=%d applies only to the long "
+        "@SYS$SYSTEM:SHUTDOWN dialogue)" % (cfg["SHUTDOWN_COMMAND"], cfg["SHUTDOWN_WARN_MINUTES"]))
     ok = vms_shutdown(cfg["VMS_HOST"], cfg["VMS_PORT"], cred["VMS_USER"], cred["VMS_PASSWORD"],
-                      cfg["SHUTDOWN_WARN_MINUTES"], "Idle timeout (vax-ctl)")
+                      cfg["SHUTDOWN_WARN_MINUTES"], "Idle timeout (vax-ctl)", command=cfg["SHUTDOWN_COMMAND"])
     state = load_state()
     if not ok:
         state["retry_after"] = time.time() + cfg["SHUTDOWN_RETRY_MINUTES"] * 60
