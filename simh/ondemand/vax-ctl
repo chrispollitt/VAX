@@ -324,6 +324,7 @@ SHUTDOWN_PROMPTS = [
 LOGIN_QUIET = 4.0                                    # seconds of silence that end "VMS is still logging us in"
 MARKER_COMMAND = 'WRITE SYS$OUTPUT F$FAO("VAXCTL-!AS","OK")'      # prints VAXCTL-OK; its echo does not contain that text
 MARKER_REPLY = "VAXCTL-OK"
+MARKER_TRIES = 4                                     # t_login is split between these
 
 
 def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=None, t_quiet=LOGIN_QUIET):
@@ -369,12 +370,24 @@ def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=N
         if t.eof:
             log("shutdown: VMS closed the connection after the password")
             return False
-        t.send(MARKER_COMMAND)
-        i, _ = t.expect([marker], t_login)
-        if i is None:
-            log("shutdown: VMS closed the connection before it answered the marker command")
-            return False
-        log("vms> logged in (the marker command was answered)")
+        # The login procedure may still be running when VMS goes quiet: cpvax's runs SET TERMINAL/INQUIRE, which asks
+        # the terminal who it is and waits for a reply that never comes, and it swallowed the first marker command as
+        # that reply (2026-10-29: no echo, no answer).  So ask again until VMS answers; the command is harmless to repeat.
+        for attempt in range(1, MARKER_TRIES + 1):
+            t.send(MARKER_COMMAND)
+            try:
+                i, _ = t.expect([marker], t_login / float(MARKER_TRIES))
+            except socket.timeout:
+                if attempt == MARKER_TRIES:
+                    raise
+                log("vms> no answer to the marker command yet (try %d of %d): the login procedure may still be running"
+                    % (attempt, MARKER_TRIES))
+                continue
+            if i is None:
+                log("shutdown: VMS closed the connection before it answered the marker command")
+                return False
+            break
+        log("vms> logged in (the marker command was answered, try %d)" % attempt)
         t.send("@SYS$SYSTEM:SHUTDOWN")
         deadline = time.time() + t_down
         while True:

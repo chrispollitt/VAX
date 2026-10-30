@@ -126,7 +126,7 @@ class FakeVMS(threading.Thread):
     SHUTDOWN dialogue.  `prompts` are (text, answer it must get); `ending` is "close" or "hang"."""
 
     def __init__(self, user, phrase, prompts, ending="close", banner_split=False, after_login=None,
-                 banner=None, prompt=b"$ ", answer_marker=True):
+                 banner=None, prompt=b"$ ", answer_marker=True, swallow_markers=0):
         super().__init__(daemon=True)
         self.user, self.phrase, self.prompts, self.ending = user, phrase, prompts, ending
         self.banner_split = banner_split
@@ -134,6 +134,8 @@ class FakeVMS(threading.Thread):
         self.banner = banner                    # what the login procedure prints (default: one "Last login" line)
         self.prompt = prompt                    # the DCL prompt: cpvax's is "CPVAX$DUA1:[SYSTEM]", not "$ "
         self.answer_marker = answer_marker      # False: echo the marker command but never print its answer
+        self.swallow_markers = swallow_markers  # the first N marker commands vanish, as in cpvax's SET TERMINAL/INQUIRE
+        self.swallowed = 0
         self.srv = socket.socket()
         self.srv.bind(("127.0.0.1", 0))
         self.srv.listen(1)
@@ -176,11 +178,16 @@ class FakeVMS(threading.Thread):
             if banner is None:
                 banner = b"\r\n    Last interactive login on Monday, 26-OCT-2026 10:00\r\n"
             c.sendall(banner + self.prompt)
-            marker_cmd = self.readline(c)                                 # the client's "am I logged in?" command
-            self.got.append(marker_cmd)
-            if marker_cmd is None or not marker_cmd.startswith("WRITE SYS$OUTPUT"):
-                c.sendall(b"\r\n%DCL-W-IVVERB, unrecognized command\r\n")
-                return
+            while True:
+                marker_cmd = self.readline(c)                             # the client's "am I logged in?" command
+                self.got.append(marker_cmd)
+                if marker_cmd is None or not marker_cmd.startswith("WRITE SYS$OUTPUT"):
+                    c.sendall(b"\r\n%DCL-W-IVVERB, unrecognized command\r\n")
+                    return
+                if self.swallowed < self.swallow_markers:
+                    self.swallowed += 1                                   # eaten by the login procedure: no echo, no answer
+                    continue
+                break
             c.sendall(marker_cmd.encode() + b"\r\n")                      # the terminal echoes what was typed
             if not self.answer_marker:
                 while c.recv(1):
@@ -269,6 +276,25 @@ class ShutdownTests(unittest.TestCase):
         fake.join(5)
         self.assertEqual(fake.got[2:4], [vc.MARKER_COMMAND, "@SYS$SYSTEM:SHUTDOWN"])
         self.assertTrue(any("logged in" in l for l in LOG), LOG)
+
+    def test_a_marker_command_swallowed_by_the_login_procedure_is_sent_again(self):
+        # cpvax, 2026-10-29: VMS went quiet while SET TERMINAL/INQUIRE waited for a reply, the first marker command
+        # was taken as that reply, and nothing came back: not even an echo.  Asking again must get through.
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS, swallow_markers=2, prompt=b"CPVAX$DUA1:[SYSTEM]")
+        self.assertTrue(shutdown_against(fake))
+        fake.join(5)
+        self.assertEqual(fake.got[2:5], [vc.MARKER_COMMAND] * 3)           # two swallowed, the third answered
+        self.assertEqual(fake.got[5], "@SYS$SYSTEM:SHUTDOWN")
+        self.assertTrue(any("no answer to the marker command yet" in l for l in LOG), LOG)
+        self.assertTrue(any("try 3" in l for l in LOG), LOG)
+
+    def test_a_marker_command_that_is_never_answered_gives_up_and_says_what_arrived(self):
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS, swallow_markers=99)
+        self.assertFalse(shutdown_against(fake))
+        fake.join(5)
+        self.assertEqual(fake.got[2:].count(vc.MARKER_COMMAND), vc.MARKER_TRIES)   # tried, and stopped
+        self.assertTrue(any("left running" in l for l in LOG), LOG)
+        self.assertTrue(any("matched nothing" in l for l in LOG), LOG)
 
     def test_the_echo_of_the_marker_command_is_not_a_login(self):
         # the terminal echoes what is typed, so the marker must not appear in its own echo
