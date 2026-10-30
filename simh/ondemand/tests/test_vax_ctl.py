@@ -125,11 +125,15 @@ class FakeVMS(threading.Thread):
     """One connection of OpenVMS' telnet service: negotiation noise, Username/Password, a DCL prompt, then the
     SHUTDOWN dialogue.  `prompts` are (text, answer it must get); `ending` is "close" or "hang"."""
 
-    def __init__(self, user, phrase, prompts, ending="close", banner_split=False, after_login=None):
+    def __init__(self, user, phrase, prompts, ending="close", banner_split=False, after_login=None,
+                 banner=None, prompt=b"$ ", answer_marker=True):
         super().__init__(daemon=True)
         self.user, self.phrase, self.prompts, self.ending = user, phrase, prompts, ending
         self.banner_split = banner_split
-        self.after_login = after_login          # bytes sent instead of the DCL prompt, then silence
+        self.after_login = after_login          # bytes sent instead of the login banner and prompt, then silence
+        self.banner = banner                    # what the login procedure prints (default: one "Last login" line)
+        self.prompt = prompt                    # the DCL prompt: cpvax's is "CPVAX$DUA1:[SYSTEM]", not "$ "
+        self.answer_marker = answer_marker      # False: echo the marker command but never print its answer
         self.srv = socket.socket()
         self.srv.bind(("127.0.0.1", 0))
         self.srv.listen(1)
@@ -165,10 +169,25 @@ class FakeVMS(threading.Thread):
                 return
             if self.after_login is not None:
                 c.sendall(self.after_login)
-                c.recv(1)                                                 # then say nothing until the client leaves
+                while c.recv(1):                                          # then say nothing until the client leaves
+                    pass
                 return
-            c.sendall(b"\r\n    Last interactive login on Monday, 26-OCT-2026 10:00\r\n$ ")
-            self.got.append(self.readline(c))
+            banner = self.banner
+            if banner is None:
+                banner = b"\r\n    Last interactive login on Monday, 26-OCT-2026 10:00\r\n"
+            c.sendall(banner + self.prompt)
+            marker_cmd = self.readline(c)                                 # the client's "am I logged in?" command
+            self.got.append(marker_cmd)
+            if marker_cmd is None or not marker_cmd.startswith("WRITE SYS$OUTPUT"):
+                c.sendall(b"\r\n%DCL-W-IVVERB, unrecognized command\r\n")
+                return
+            c.sendall(marker_cmd.encode() + b"\r\n")                      # the terminal echoes what was typed
+            if not self.answer_marker:
+                while c.recv(1):
+                    pass
+                return
+            c.sendall(b"VAXCTL-OK\r\n" + self.prompt)
+            self.got.append(self.readline(c))                             # @SYS$SYSTEM:SHUTDOWN
             for text, want in self.prompts:
                 c.sendall(text.encode())
                 got = self.readline(c)
@@ -200,6 +219,7 @@ OPENING = [("", "@SYS$SYSTEM:SHUTDOWN")]
 
 def shutdown_against(fake, user="SYSTEM", phrase="x1", **kw):
     del LOG[:]
+    kw.setdefault("t_quiet", 0.3)                    # the real wait for VMS to go quiet is 4 s
     return vc.vms_shutdown("127.0.0.1", fake.port, user, phrase, 2, "Idle timeout (vax-ctl)",
                            t_login=3, t_down=3, **kw)
 
@@ -209,8 +229,8 @@ class ShutdownTests(unittest.TestCase):
         fake = FakeVMS("SYSTEM", "x1", PROMPTS)
         self.assertTrue(shutdown_against(fake))
         fake.join(5)
-        self.assertEqual(fake.got[:3], ["SYSTEM", "x1", "@SYS$SYSTEM:SHUTDOWN"])
-        self.assertEqual(fake.got[3:], [w for _, w in PROMPTS])
+        self.assertEqual(fake.got[:4], ["SYSTEM", "x1", vc.MARKER_COMMAND, "@SYS$SYSTEM:SHUTDOWN"])
+        self.assertEqual(fake.got[4:], [w for _, w in PROMPTS])
         self.assertTrue(any("going down" in l or "complete" in l for l in LOG), LOG)
 
     def test_password_is_never_logged(self):
@@ -233,6 +253,48 @@ class ShutdownTests(unittest.TestCase):
         fake = FakeVMS("SYSTEM", "x1", PROMPTS[:2], ending="hang")
         self.assertFalse(shutdown_against(fake))
         self.assertTrue(any("left running" in l for l in LOG), LOG)
+
+    def test_the_real_cpvax_login_with_no_dollar_prompt(self):
+        # What cpvax really sent on 2026-10-29 after the password: the login procedure's terminal queries (nobody
+        # answers them), SET warnings, window-title escapes, "Ready!", and the DCL prompt CPVAX$DUA1:[SYSTEM] with no
+        # "$ ".  The first real shutdown waited for "$ " and timed out; this must now go through.
+        banner = (b" \r\n Welcome to OpenVMS (TM) VAX Operating System, Version V7.3\r\n"
+                  b"    Last interactive login on Thursday, 29-OCT-2026 18:29\r\n"
+                  b"    Last non-interactive login on Wednesday, 28-OCT-2026 23:47\r"
+                  b"\x1b[c\x1b\\\x1bZ\x1b[0c\r\n%SET-W-NOTSET, error modifying NTA1:\r\n-SET-I-UNKTERM, unknown terminal type\r"
+                  b"\x1b[c\x1b\\\x1bZ\x1b[0c\r\n%SET-W-NOTSET, error modifying NTA1:\r\n-SET-I-UNKTERM, unknown terminal type\r\n"
+                  b"\x1b]0;SYSTEM@CPVAX[NTA1]\x07\r\n\x1b]1;SYSTEM@CPVAX[NTA1]\x07\r\nReady!\r\n")
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS, banner=banner, prompt=b"CPVAX$DUA1:[SYSTEM]")
+        self.assertTrue(shutdown_against(fake))
+        fake.join(5)
+        self.assertEqual(fake.got[2:4], [vc.MARKER_COMMAND, "@SYS$SYSTEM:SHUTDOWN"])
+        self.assertTrue(any("logged in" in l for l in LOG), LOG)
+
+    def test_the_echo_of_the_marker_command_is_not_a_login(self):
+        # the terminal echoes what is typed, so the marker must not appear in its own echo
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS, answer_marker=False)
+        self.assertFalse(shutdown_against(fake))
+        self.assertTrue(any("left running" in l for l in LOG), LOG)
+        self.assertFalse(any("logged in" in l for l in LOG), LOG)
+
+    def test_the_connection_closing_before_the_marker_answer_is_not_success(self):
+        class Closer(FakeVMS):
+            def run(self):
+                c, _ = self.srv.accept()
+                c.settimeout(5)
+                try:
+                    c.sendall(b"\r\nUsername: ")
+                    self.readline(c)
+                    c.sendall(b"Password: ")
+                    self.readline(c)
+                    c.sendall(b"\r\nReady!\r\nCPVAX$DUA1:[SYSTEM]")
+                    self.readline(c)                                      # the marker command, then hang up
+                finally:
+                    c.close()
+                    self.srv.close()
+        fake = Closer("SYSTEM", "x1", PROMPTS)
+        self.assertFalse(shutdown_against(fake))
+        self.assertTrue(any("before it answered the marker" in l for l in LOG), LOG)
 
     def test_a_login_that_never_reaches_a_prompt_shows_what_vms_sent(self):
         # the real failure of 2026-10-29: after the password VMS sent neither "$ " nor a login failure, and the log
