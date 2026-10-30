@@ -227,6 +227,7 @@ OPENING = [("", "@SYS$SYSTEM:SHUTDOWN")]
 def shutdown_against(fake, user="SYSTEM", phrase="x1", **kw):
     del LOG[:]
     kw.setdefault("t_quiet", 0.3)                    # the real wait for VMS to go quiet is 4 s
+    kw.setdefault("t_progress", 0.5)                 # and the real progress line is every 30 s
     return vc.vms_shutdown("127.0.0.1", fake.port, user, phrase, 2, "Idle timeout (vax-ctl)",
                            t_login=3, t_down=3, **kw)
 
@@ -276,6 +277,17 @@ class ShutdownTests(unittest.TestCase):
         fake.join(5)
         self.assertEqual(fake.got[2:4], [vc.MARKER_COMMAND, "@SYS$SYSTEM:SHUTDOWN"])
         self.assertTrue(any("logged in" in l for l in LOG), LOG)
+
+    def test_a_stall_after_the_shutdown_command_is_reported_while_it_happens(self):
+        # 2026-10-29: after "@SYS$SYSTEM:SHUTDOWN" nothing matched and the log said nothing for 7 minutes.  Now every
+        # t_progress seconds it says what has arrived, so the question VMS really asked can be seen at once.
+        odd = [("\r\nSomething unexpected: the system wants to know your favourite colour? ", "blue")]
+        fake = FakeVMS("SYSTEM", "x1", odd, ending="hang")
+        self.assertFalse(shutdown_against(fake))
+        progress = [l for l in LOG if "still waiting for a SHUTDOWN question" in l]
+        self.assertTrue(progress, LOG)
+        self.assertIn("favourite colour", progress[0])
+        self.assertTrue(any("matched nothing" in l for l in LOG), LOG)
 
     def test_a_marker_command_swallowed_by_the_login_procedure_is_sent_again(self):
         # cpvax, 2026-10-29: VMS went quiet while SET TERMINAL/INQUIRE waited for a reply, the first marker command

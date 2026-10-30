@@ -327,7 +327,8 @@ MARKER_REPLY = "VAXCTL-OK"
 MARKER_TRIES = 4                                     # t_login is split between these
 
 
-def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=None, t_quiet=LOGIN_QUIET):
+def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=None, t_quiet=LOGIN_QUIET,
+                 t_progress=30.0):
     """Log in to OpenVMS and run @SYS$SYSTEM:SHUTDOWN.  True once VMS has gone down (the connection closed or it
     said so); False on anything unexpected, with the transcript logged (never the password).  After the last
     prompt VMS is silent for the whole warning period, so the only bound is one deadline: the warning plus 5 minutes.
@@ -394,7 +395,13 @@ def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=N
             left = deadline - time.time()
             if left <= 0:
                 raise socket.timeout("VMS did not go down within %d s" % t_down)
-            i, text = t.expect(prompts + [done], left)
+            try:
+                i, text = t.expect(prompts + [done], min(left, t_progress))
+            except socket.timeout:
+                # still waiting: say what has arrived so far, so a stall can be diagnosed while it is happening
+                log("vms> still waiting for a SHUTDOWN question or the end (%d s left); nothing matched yet; text so far: %r"
+                    % (left, redact(t.buf[-300:])))
+                continue
             if text.strip():
                 log("vms> " + _clean(text)[-300:])
             if i is None:
