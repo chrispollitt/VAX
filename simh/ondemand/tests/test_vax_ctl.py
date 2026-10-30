@@ -213,11 +213,14 @@ class FakeVMS(threading.Thread):
                     return
                 if self.drop_after is not None and k + 1 >= self.drop_after:
                     return                                                # the session dies in the middle of the dialogue
-            if self.ending == "hang":
-                c.recv(1)
+            if self.finale is not None:
+                c.sendall(self.finale)
+            if self.ending == "hang":                                     # VMS halts, simh exits: no goodbye, no close
+                while c.recv(1):
+                    pass
                 return
-            c.sendall(self.finale if self.finale is not None
-                      else b"\r\nSYSTEM SHUTDOWN COMPLETE - use console to halt system\r\n")
+            if self.finale is None:
+                c.sendall(b"\r\nSYSTEM SHUTDOWN COMPLETE - use console to halt system\r\n")
         except (socket.timeout, OSError):
             pass
         finally:
@@ -246,6 +249,7 @@ def shutdown_against(fake, user="SYSTEM", phrase="x1", **kw):
     kw.setdefault("t_quiet", 0.3)                    # the real wait for VMS to go quiet is 4 s
     kw.setdefault("t_progress", 0.5)                 # and the real progress line is every 30 s
     kw.setdefault("t_settle", 0.3)                   # and the real wait for a question to be complete is 1 s
+    kw.setdefault("t_poll", 0.2)                     # and the real check that the simulator is still running is every 2 s
     kw.setdefault("command", "@SYS$SYSTEM:SHUTDOWN")  # the long dialogue, which most tests exercise (the default is SHUTDOWN)
     return vc.vms_shutdown("127.0.0.1", fake.port, user, phrase, 2, "Idle timeout (vax-ctl)",
                            t_login=3, t_down=3, **kw)
@@ -310,6 +314,28 @@ class ShutdownTests(unittest.TestCase):
                                   "How many minutes until final shu\r\ntdown [0]: ", re.I))
         self.assertTrue(re.search(vc.loose("shutdown complete"), "SYSTEM SHUTDOWN\r\n COMPLETE", re.I))
         self.assertFalse(re.search(vc.loose("final shutdown"), "final startup", re.I))
+
+    def test_the_simulator_stopping_after_the_shutdown_messages_is_the_end(self):
+        # 2026-10-29, the first good shutdown: VMS halted, simh exited, and the telnet connection did not close: it
+        # just vanished.  vax-ctl waited the full 7 minutes for a close, and would have reported a failure.
+        stopped_at = time.time() + 0.8
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS[:1], ending="hang",
+                       finale=(b"\r\n%SHUTDOWN-I-OPERATOR, this terminal is now an operator's console\r\n"
+                               b"%SHUTDOWN-I-DISLOGINS, interactive logins will now be disabled\r\n"))
+        self.assertTrue(shutdown_against(fake, command="SHUTDOWN", halted=lambda: time.time() >= stopped_at))
+        self.assertTrue(any("VMS has halted" in l for l in LOG), LOG)
+
+    def test_the_simulator_stopping_before_the_shutdown_started_is_not_a_success(self):
+        stopped_at = time.time() + 0.8
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS[:1], ending="hang", finale=b"\r\nNothing about a shutdown here.\r\n")
+        self.assertFalse(shutdown_against(fake, command="SHUTDOWN", halted=lambda: time.time() >= stopped_at))
+        self.assertTrue(any("not counting it as one" in l for l in LOG), LOG)
+
+    def test_a_running_simulator_that_says_nothing_still_times_out(self):
+        fake = FakeVMS("SYSTEM", "x1", PROMPTS[:1], ending="hang",
+                       finale=b"\r\n%SHUTDOWN-I-OPERATOR, this terminal is now an operator's console\r\n")
+        self.assertFalse(shutdown_against(fake, command="SHUTDOWN", halted=lambda: False))
+        self.assertTrue(any("left running" in l for l in LOG), LOG)
 
     def test_cpvaxs_own_shutdown_command_asks_one_question(self):
         # what Chris typed by hand on 2026-10-29: SHUTDOWN, one question, YES, then %SHUTDOWN-I- lines and the end

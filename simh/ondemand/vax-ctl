@@ -340,7 +340,7 @@ MARKER_TRIES = 4                                     # t_login is split between 
 
 
 def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=None, t_quiet=LOGIN_QUIET,
-                 t_progress=30.0, t_settle=SETTLE, command="SHUTDOWN"):
+                 t_progress=30.0, t_settle=SETTLE, command="SHUTDOWN", halted=None, t_poll=2.0):
     """Log in to OpenVMS and run `command`: cpvax's own SHUTDOWN command, which asks one question ("Do you really want
     to shutdown node CPVAX [NO]?") and takes the defaults for the rest, as typed by hand on 2026-10-29.  (The plain
     @SYS$SYSTEM:SHUTDOWN, with no parameters, interviews at length; the dialogue below copes with that too.)
@@ -371,6 +371,7 @@ def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=N
     unknown = rx(r"\[[^\]\r\n]{1,30}\]\s*[:?]\s*$")
     shutdown_started = False
     answered_unknown = 0
+    last_progress = time.time()
     try:
         t = Telnet(host, port)
     except OSError as e:
@@ -420,11 +421,22 @@ def vms_shutdown(host, port, user, secret, minutes, reason, t_login=60, t_down=N
                 raise socket.timeout("VMS did not go down within %d s" % t_down)
             n = len(prompts)
             try:
-                i, text = t.expect(prompts + [done, started, unknown], min(left, t_progress))
+                i, text = t.expect(prompts + [done, started, unknown], min(left, t_poll))
             except socket.timeout:
+                # Nothing new.  When VMS halts, simh exits and the telnet connection does not close: it just vanishes,
+                # so "the simulator has stopped" is the end of a shutdown that has started (2026-10-29: the first
+                # successful shutdown waited the full 7 minutes for a close that never came).
+                if halted is not None and halted():
+                    if shutdown_started:
+                        log("shutdown: the simulator has stopped after VMS's %SHUTDOWN-I- messages: VMS has halted")
+                        return True
+                    log("shutdown: the simulator stopped before VMS had started its shutdown: not counting it as one")
+                    return False
                 # still waiting: say what has arrived so far, so a stall can be diagnosed while it is happening
-                log("vms> still waiting for a SHUTDOWN question or the end (%d s left); nothing matched yet; text so far: %r"
-                    % (left, redact(t.buf[-300:])))
+                if time.time() - last_progress >= t_progress:
+                    last_progress = time.time()
+                    log("vms> still waiting for a SHUTDOWN question or the end (%d s left); nothing matched yet; text so far: %r"
+                        % (left, redact(t.buf[-300:])))
                 continue
             if text.strip():
                 log("vms> " + _clean(text)[-300:])
@@ -503,7 +515,8 @@ def cmd_shutdown(cfg, args=None):
     log("shutdown: asking VMS to shut down with the command %r (SHUTDOWN_WARN_MINUTES=%d applies only to the long "
         "@SYS$SYSTEM:SHUTDOWN dialogue)" % (cfg["SHUTDOWN_COMMAND"], cfg["SHUTDOWN_WARN_MINUTES"]))
     ok = vms_shutdown(cfg["VMS_HOST"], cfg["VMS_PORT"], cred["VMS_USER"], cred["VMS_PASSWORD"],
-                      cfg["SHUTDOWN_WARN_MINUTES"], "Idle timeout (vax-ctl)", command=cfg["SHUTDOWN_COMMAND"])
+                      cfg["SHUTDOWN_WARN_MINUTES"], "Idle timeout (vax-ctl)", command=cfg["SHUTDOWN_COMMAND"],
+                      halted=lambda: not unit_active(cfg))
     state = load_state()
     if not ok:
         state["retry_after"] = time.time() + cfg["SHUTDOWN_RETRY_MINUTES"] * 60
