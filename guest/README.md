@@ -83,6 +83,14 @@ The `SET FILE/PROTECTION` is needed because the directory is created without del
 * **The AUTHORIZE command is one symbol**, `AUTH_CMD = "MCR AUTHORIZE"` near the top. If
   `DEFINE/USER` does not reach AUTHORIZE through `MCR` on your system, change it to
   `RUN SYS$SYSTEM:AUTHORIZE`.
+* **SYSUAF and RIGHTSLIST are defined for the run if they are not already.** The first real
+  run on cpvax (OpenVMS V7.3) failed with `%UAF-E-NAOFIL, unable to open system
+  authorization file (SYSUAF.DAT)`, `-RMS-E-FNF`: SYSTEM's default directory is `[SYSTEM]`
+  on the data disk, and with no `SYSUAF` logical AUTHORIZE looks there. The procedure now
+  defines `SYSUAF` and `RIGHTSLIST` as process logicals pointing into `SYS$SYSTEM:` when
+  they are undefined, and removes them at the end. Existing definitions are never touched.
+  A `NAOFIL` from AUTHORIZE now stops the run in step 2 instead of being read as "account
+  not found".
 * **Extra hardening** beyond the original list: `/ACCOUNT`, `/FLAGS=(DISMAIL)`, `/NOBATCH`.
   Not done on purpose: `/NONETWORK` (it could lock visitors out of FTP and similar) and
   anything that limits memory or I/O quotas. Add them as `CALL MOD_ONE` lines if wanted.

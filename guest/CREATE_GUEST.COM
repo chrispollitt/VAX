@@ -44,6 +44,10 @@ $ ST_DIR = "not done"
 $ ST_LOGIN = "not done"
 $ MOD_BAD = 0
 $ UE_SILENT == 0
+$ UE_NOUAF == 0
+$ UAF_DEF = 0
+$ RL_DEF = 0
+$ UAF_TXT = ""
 $ G_USER = ""
 $ G_UIC = ""
 $ G_DEV = ""
@@ -63,7 +67,23 @@ $ SAY "  ERROR: SYSPRV is needed to change the UAF.  Run this as SYSTEM."
 $ GOTO FAIL
 $PRIV_OK:
 $ !
-$ G_USER = F$EDIT(P1,"UPCASE,COLLAPSE")
+$ ! Where AUTHORIZE finds the user and rights-list files.  Some systems never
+$ ! define the logical names SYSUAF and RIGHTSLIST; LOGINOUT does not need
+$ ! them, but AUTHORIZE then looks in the current default directory (for
+$ ! SYSTEM that is [SYSTEM], not SYS$SYSTEM) and fails with NAOFIL.  If they
+$ ! are not defined, define them for this process only, and remove them at
+$ ! the end.  If they are defined, they are left alone.
+$ IF F$TRNLNM("SYSUAF") .NES. "" THEN GOTO UAF_HAVE
+$ DEFINE/PROCESS SYSUAF SYS$SYSTEM:SYSUAF.DAT
+$ UAF_DEF = 1
+$UAF_HAVE:
+$ IF F$TRNLNM("RIGHTSLIST") .NES. "" THEN GOTO RL_HAVE
+$ DEFINE/PROCESS RIGHTSLIST SYS$SYSTEM:RIGHTSLIST.DAT
+$ RL_DEF = 1
+$RL_HAVE:
+$ UAF_TXT = F$TRNLNM("SYSUAF")
+$ !
+$ G_USER =F$EDIT(P1,"UPCASE,COLLAPSE")
 $ IF G_USER .EQS. "" THEN G_USER = "GUEST"
 $ CALL CHECK_CHARS "''G_USER'" "''ALNUM'" 1 12
 $ IF .NOT. $STATUS THEN GOTO BAD_USER
@@ -124,18 +144,22 @@ $ SAY "  UIC       : ''G_UIC'"
 $ SAY "  device    : ''G_DEV'"
 $ SAY "  home      : ''G_HOME'"
 $ SAY "  password  : (not shown)"
+$ IF UAF_DEF THEN SAY "  UAF       : ''UAF_TXT'  (SYSUAF was not defined; defined for this run only)"
+$ IF .NOT. UAF_DEF THEN SAY "  UAF       : ''UAF_TXT'"
 $ SAY ""
 $ !
 $ ! ---------------------------------------------------------------- step 2
 $ SAY "Step 2 of 7: look for an existing ''G_USER' account"
 $ CALL USER_EXISTS "''G_USER'" "SHOW0"
 $ IF $STATUS THEN GOTO ALREADY
+$ IF UE_NOUAF THEN GOTO NO_UAF
 $ IF .NOT. UE_SILENT THEN GOTO NOT_FOUND
 $ SAY "  AUTHORIZE printed nothing with:  ''AUTH_CMD'"
 $ SAY "  Trying  RUN SYS$SYSTEM:AUTHORIZE  instead."
 $ AUTH_CMD = "RUN SYS$SYSTEM:AUTHORIZE"
 $ CALL USER_EXISTS "''G_USER'" "SHOW0B"
 $ IF $STATUS THEN GOTO ALREADY
+$ IF UE_NOUAF THEN GOTO NO_UAF
 $ IF .NOT. UE_SILENT THEN GOTO NOT_FOUND
 $ SAY "  ERROR: AUTHORIZE printed nothing that way either.  Nothing was changed."
 $ SAY "  Try it by hand:  $ MCR AUTHORIZE  then  UAF> SHOW ''G_USER'"
@@ -304,6 +328,11 @@ $ SAY ""
 $ GOTO CLEANUP
 $ !
 $ ! ----------------------------------------------------- error exits
+$NO_UAF:
+$ SAY "  ERROR: AUTHORIZE cannot open the system authorization file.  Nothing was changed."
+$ SAY "  SYSUAF is: ''UAF_TXT'"
+$ SAY "  Look by hand:  $ SHOW LOGICAL SYSUAF   and   $ DIRECTORY SYS$SYSTEM:SYSUAF.DAT"
+$ GOTO FAIL
 $BAD_USER:
 $ SAY "  ERROR: user name must be 1 to 12 letters, digits, $ or _ (got ''G_USER')."
 $ GOTO FAIL
@@ -339,6 +368,8 @@ $ IF ECHO_OFF THEN SET TERMINAL/ECHO
 $ CLOSE/ERROR=CL_A CRGF
 $CL_A:
 $ IF PROT_SAVED THEN SET PROTECTION=('OLD_PROT')/DEFAULT
+$ IF UAF_DEF THEN DEASSIGN/PROCESS SYSUAF
+$ IF RL_DEF THEN DEASSIGN/PROCESS RIGHTSLIST
 $ IF F$TYPE(BASE) .EQS. "STRING" THEN DELETE/NOLOG 'BASE'*.TMP;*
 $ EXIT FINAL
 $ !
@@ -416,6 +447,7 @@ $ ! global UE_SILENT to 1 when AUTHORIZE printed nothing at all.
 $USER_EXISTS: SUBROUTINE
 $ SET NOON
 $ UE_SILENT == 0
+$ UE_NOUAF == 0
 $ F_C = BASE + "_" + P2 + "C.TMP"
 $ F_O = BASE + "_" + P2 + "O.TMP"
 $ F_E = BASE + "_" + P2 + "E.TMP"
@@ -426,6 +458,8 @@ $ CLOSE CRGF
 $ CALL RUN_AUTH "''F_C'" "''F_O'" "''F_E'"
 $ CALL NO_OUTPUT "''F_O'" "''F_E'"
 $ IF $STATUS THEN UE_SILENT == 1
+$ CALL QSEARCH "''F_O',''F_E'" "NAOFIL"
+$ IF $STATUS THEN UE_NOUAF == 1
 $ CALL QSEARCH "''F_O'" "Username: ''P1' "
 $ IF $STATUS THEN EXIT 1
 $UE_FAIL:
