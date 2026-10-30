@@ -118,9 +118,12 @@ cpbee and a real power-on from the web window have not been exercised by this wo
 ## How "idle" is decided
 
 Every minute, as root, `vax-ctl idle-check` samples simh's CPU time and the bytes over the `vaxtap` interface.  The VAX
-is idle in a minute when simh used less than `CPU_PCT_MAX` (3) percent of a core **and** fewer than
-`NET_BYTES_PER_MIN_MAX` (60000) bytes crossed the tap.  After `IDLE_MINUTES` (30) idle minutes in a row it shuts down.
-A telnet session nobody types in is idle; a batch job or a transfer is not.  The first `STARTUP_GRACE_MINUTES` (10)
+is idle in a minute when simh used less than `CPU_PCT_MAX` (30) percent of a core **and** fewer than
+`NET_BYTES_PER_MIN_MAX` (1500) bytes crossed the tap.  After `IDLE_MINUTES` (30) idle minutes in a row it shuts down.
+A telnet session nobody types in is idle; typing, a batch job or a transfer is not.  The numbers come from a 10-second
+log of a real cpvax: untouched and logged in it uses 15-19% of a core and 200-900 bytes a minute; one typed command
+adds about 1000 bytes, a login 6000+.  (The first guess, 60000 bytes, never saw a person at the keyboard: the VAX was
+shut down under a user's session on 2026-10-29.)  The first `STARTUP_GRACE_MINUTES` (10)
 after a start never count.  `vax-ctl status` shows the count; `sudo journalctl -u vax-idle` shows what it did.  The right
 thresholds depend on how quiet a logged-in VMS really is under simh (`SET CPU IDLE`): watch it once and adjust.
 
