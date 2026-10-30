@@ -77,6 +77,77 @@ class StepTests(unittest.TestCase):
         st, info = vc.step(st, sample(60, 40.0, 0), cfg)              # 50%: under the raised limit
         self.assertFalse(info["busy"])
 
+    def test_typing_at_the_console_resets_the_count(self):
+        # the web console window talks to simh over a local socket, never over the tap interface
+        def con(t, n, b):
+            return dict(sample(t, 10.0, 0), con_n=n, con_in=b)
+        st, _ = vc.step({}, con(0, 1, 100), CFG)
+        st, info = vc.step(st, con(60, 1, 100), CFG)                  # window open, nobody typing
+        self.assertFalse(info["busy"], info)
+        st, info = vc.step(st, con(120, 1, 100), CFG)
+        self.assertGreater(info["idle_min"], 1.9)
+        st, info = vc.step(st, con(180, 1, 136), CFG)                 # four "sho time" lines: 36 keystroke bytes
+        self.assertTrue(info["busy"])
+        self.assertIn("typing", info["why"])
+        self.assertEqual(info["idle_min"], 0.0)
+
+    def test_opening_or_closing_a_console_window_counts_as_activity(self):
+        def con(t, n, b):
+            return dict(sample(t, 10.0, 0), con_n=n, con_in=b)
+        st, _ = vc.step({}, con(0, 0, 0), CFG)
+        st, info = vc.step(st, con(60, 1, 0), CFG)
+        self.assertTrue(info["busy"])
+        self.assertIn("opened or closed", info["why"])
+        st, info = vc.step(st, con(120, 1, 0), CFG)
+        self.assertFalse(info["busy"])
+        st, info = vc.step(st, con(180, 0, 0), CFG)                   # closed again (its counters are gone)
+        self.assertTrue(info["busy"])
+
+    def test_samples_without_console_numbers_still_work(self):
+        # `ss` missing or failing gives None, and state files from before this signal have no such keys
+        st, _ = vc.step({}, dict(sample(0, 10.0, 0), con_n=None, con_in=None), CFG)
+        st, info = vc.step(st, dict(sample(60, 10.0, 0), con_n=None, con_in=None), CFG)
+        self.assertFalse(info["busy"])
+        st, _ = vc.step({}, sample(0, 10.0, 0), CFG)
+        st, info = vc.step(st, dict(sample(60, 10.0, 0), con_n=1, con_in=50), CFG)
+        self.assertFalse(info["busy"])                                # nothing to compare with yet
+
+
+class ConsoleSampleTests(unittest.TestCase):
+    SS_OUT = ("0      0      [::ffff:127.0.0.1]:2323  [::ffff:127.0.0.1]:56566\n"
+              "\t cubic wscale:7,7 rto:204 bytes_sent:10904 bytes_acked:10904 bytes_received:126 segs_out:50\n"
+              "0      0      [::ffff:127.0.0.1]:2323  [::ffff:127.0.0.1]:56570\n"
+              "\t cubic wscale:7,7 bytes_sent:20 bytes_acked:20 bytes_received:9 segs_out:3\n")
+
+    def test_parse_counts_only_what_simh_received(self):
+        self.assertEqual(vc.parse_ss(self.SS_OUT), (2, 135))          # 126 + 9; the 10904 bytes sent are output
+        self.assertEqual(vc.parse_ss(""), (0, 0))
+
+    def test_console_sample_runs_ss_for_the_console_port(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = os.path.join(d, "ss")
+            with open(fake, "w") as f:
+                f.write("#!/bin/sh\necho \"$@\" > %s/args\ncat <<'EOF'\n%sEOF\n" % (d, self.SS_OUT))
+            os.chmod(fake, 0o755)
+            old = vc.SS
+            vc.SS = [fake]
+            try:
+                self.assertEqual(vc.console_sample(CFG), (2, 135))
+            finally:
+                vc.SS = old
+            with open(os.path.join(d, "args")) as f:
+                self.assertIn("sport = :%d" % CFG["CONSOLE_PORT"], f.read())
+
+    def test_console_sample_is_none_when_ss_is_missing_or_fails(self):
+        old = vc.SS
+        try:
+            vc.SS = ["/nonexistent/ss"]
+            self.assertEqual(vc.console_sample(CFG), (None, None))
+            vc.SS = ["false"]
+            self.assertEqual(vc.console_sample(CFG), (None, None))
+        finally:
+            vc.SS = old
+
 
 class ConfTests(unittest.TestCase):
     def test_types_and_unknown_keys(self):

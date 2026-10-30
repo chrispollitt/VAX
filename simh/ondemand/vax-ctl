@@ -12,8 +12,9 @@
 Starting is not done here: the web terminal runs `sudo systemctl start vax.service` (one sudoers line).
 
 "Idle" means, for IDLE_MINUTES in a row, simh used less than CPU_PCT_MAX percent of a core and fewer than
-NET_BYTES_PER_MIN_MAX bytes crossed the vaxtap interface.  A telnet session nobody types in is idle; a batch job
-is not.  Nothing counts for the first STARTUP_GRACE_MINUTES after the VAX starts (booting looks quiet in places).
+NET_BYTES_PER_MIN_MAX bytes crossed the vaxtap interface, and nobody typed at (or opened or closed) a web console
+window (CONSOLE_BYTES_PER_MIN_MAX keystroke bytes a minute, read with `ss` from simh's console socket: that traffic never
+crosses the tap).  A telnet session nobody types in is idle; a batch job is not.  Nothing counts for the first STARTUP_GRACE_MINUTES after the VAX starts (booting looks quiet in places).
 
 A plain `systemctl stop vax` is a power cut for the emulated machine (see cmpi-router's setup-vax.sh), so the stop
 always goes through VMS's own SHUTDOWN first.  If that fails the VAX is left running and the failure is logged;
@@ -38,6 +39,7 @@ STATE = os.environ.get("VAX_CTL_STATE", "/var/lib/vax-ctl/state.json")
 PROC = os.environ.get("VAX_CTL_PROC", "/proc")
 SYS = os.environ.get("VAX_CTL_SYS", "/sys")
 SYSTEMCTL = os.environ.get("VAX_CTL_SYSTEMCTL", "systemctl").split()
+SS = os.environ.get("VAX_CTL_SS", "ss").split()
 BOOT_LOG = os.environ.get("VAX_CTL_BOOT_LOG", "/run/vax-ctl/console-boot.txt")
 BOOT_STATE = os.environ.get("VAX_CTL_BOOT_STATE", os.path.join(os.path.dirname(STATE), "boot.json"))
 
@@ -55,6 +57,7 @@ DEFAULTS = {
     "STARTUP_GRACE_MINUTES": 10,
     "CPU_PCT_MAX": 30.0,
     "NET_BYTES_PER_MIN_MAX": 1500,
+    "CONSOLE_BYTES_PER_MIN_MAX": 4,
     "SHUTDOWN_WARN_MINUTES": 2,
     "SHUTDOWN_COMMAND": "SHUTDOWN",
     "SHUTDOWN_RETRY_MINUTES": 15,
@@ -116,10 +119,16 @@ def step(state, cur, cfg):
     cpu_pct = 100.0 * (cur["cpu_s"] - last["cpu_s"]) / dt
     net_pm = 60.0 * (cur["net_b"] - last["net_b"]) / dt
     info["cpu_pct"], info["net_per_min"] = cpu_pct, net_pm
+    con_n, last_n = cur.get("con_n"), last.get("con_n")
+    con_in, last_in = cur.get("con_in"), last.get("con_in")
     if cpu_pct > cfg["CPU_PCT_MAX"]:
         info["why"] = "cpu %.1f%%" % cpu_pct
     elif net_pm > cfg["NET_BYTES_PER_MIN_MAX"]:
         info["why"] = "network %d bytes/min" % net_pm
+    elif con_n is not None and last_n is not None and con_n != last_n:
+        info["why"] = "a console window was opened or closed"
+    elif con_in is not None and last_in is not None and 60.0 * (con_in - last_in) / dt > cfg["CONSOLE_BYTES_PER_MIN_MAX"]:
+        info["why"] = "typing at the console"
     else:
         info["busy"] = False
     if info["busy"]:
@@ -172,7 +181,28 @@ def sample(cfg, pid):
     for d in ("rx_bytes", "tx_bytes"):
         with open("%s/class/net/%s/statistics/%s" % (SYS, cfg["NET_IF"], d)) as f:
             nb += int(f.read())
-    return {"t": time.time(), "cpu_s": cpu_s, "net_b": nb, "age_s": up - start_s}
+    con_n, con_in = console_sample(cfg)
+    return {"t": time.time(), "cpu_s": cpu_s, "net_b": nb, "age_s": up - start_s, "con_n": con_n, "con_in": con_in}
+
+
+def parse_ss(text):
+    """(connections, bytes simh has received from them) out of `ss -tniH` output for the console's own sockets.
+    Those bytes are what the people at the console window typed: the output simh sends is not counted."""
+    got = re.findall(r"bytes_received:(\d+)", text)
+    return len(got), sum(int(x) for x in got)
+
+
+def console_sample(cfg):
+    """parse_ss of the established connections to simh's console port, or (None, None) when `ss` cannot say.
+    The web console window talks to simh over this local socket, so it never shows up on the tap interface."""
+    try:
+        out = subprocess.run(SS + ["-tniH", "state", "established", "( sport = :%d )" % cfg["CONSOLE_PORT"]],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    if out.returncode != 0:
+        return None, None
+    return parse_ss(out.stdout)
 
 
 def load_state(path=None):

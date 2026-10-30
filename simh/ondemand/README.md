@@ -123,7 +123,11 @@ is idle in a minute when simh used less than `CPU_PCT_MAX` (30) percent of a cor
 A telnet session nobody types in is idle; typing, a batch job or a transfer is not.  The numbers come from a 10-second
 log of a real cpvax: untouched and logged in it uses 15-19% of a core and 200-900 bytes a minute; one typed command
 adds about 1000 bytes, a login 6000+.  (The first guess, 60000 bytes, never saw a person at the keyboard: the VAX was
-shut down under a user's session on 2026-10-29.)  The first `STARTUP_GRACE_MINUTES` (10)
+shut down under a user's session on 2026-10-29.)  Typing in the **web console window** is counted by a second signal:
+that window talks to simh over the local socket `127.0.0.1:2323`, which never crosses `vaxtap` (found the same evening:
+typing there left the network log at zero).  Each minute `vax-ctl` reads the console sockets with `ss` and counts the
+keystroke bytes simh received (`CONSOLE_BYTES_PER_MIN_MAX`, 4); opening or closing a console window counts too.
+The first `STARTUP_GRACE_MINUTES` (10)
 after a start never count.  `vax-ctl status` shows the count; `sudo journalctl -u vax-idle` shows what it did.  The right
 thresholds depend on how quiet a logged-in VMS really is under simh (`SET CPU IDLE`): watch it once and adjust.
 
