@@ -312,6 +312,7 @@ def _clean(text):
 
 # SHUTDOWN.COM asks these, in this order, and takes the default (shown here as "") for the rest
 SHUTDOWN_PROMPTS = [
+    (r"do you really want to shutdown", "YES"),     # the first question on cpvax (found 2026-10-29); the default is NO
     (r"how many minutes until final shutdown", "{minutes}"),
     (r"reason for shutdown", "{reason}"),
     (r"spin down the disk volumes", "NO"),

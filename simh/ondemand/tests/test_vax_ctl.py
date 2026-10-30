@@ -214,7 +214,10 @@ class FakeVMS(threading.Thread):
 
 
 PROMPTS = [
-    ("\r\n        SHUTDOWN -- Perform an Orderly System Shutdown\r\n\r\nHow many minutes until final shutdown [0]: ", "2"),
+    # as cpvax printed them on 2026-10-29 (OpenVMS VAX V7.3): this question comes first, and its default is NO
+    ("\r\nCPVAX$DUA1:[SYSTEM]\r\n\r\n\r\n        SHUTDOWN -- Perform an Orderly System Shutdown\r\n"
+     "                    on node CPVAX\r\n\rDo you really want to shutdown node CPVAX [NO]? ", "YES"),
+    ("\r\nHow many minutes until final shutdown [0]: ", "2"),
     ("Reason for shutdown [Standalone]: ", "Idle timeout (vax-ctl)"),
     ("Do you want to spin down the disk volumes? [NO]: ", "NO"),
     ("Do you want to invoke the site-specific shutdown procedure? [YES]: ", "YES"),
