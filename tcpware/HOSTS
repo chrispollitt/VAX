@@ -1,0 +1,12 @@
+#
+#        HOSTS.
+#
+#        Define host names and their internet addresses.
+#
+#        Syntax: internet-address host-name [alias[ alias...]]
+#
+#==HOSTS==
+# Only this host and its DNS server (cpbee, 192.168.20.1) are listed here; every other LAN name
+# comes from cpbee's DNS (domain cmnet, TCPWARE_SVCORDER local,bind).
+192.168.20.30        cpvax.cmnet cpvax                       # OpenVMS
+192.168.20.1         cpbee.cmnet cpbee                       # router, DNS for the LAN
