@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cpvax status</title>
+<!-- Draws the page from /status.com (a DCL CGI that prints one fact per line).  To list another service, add a line to
+     SERVICES below: a process name and/or a port that should be there. -->
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --ink: #1b1f24; --muted: #5b6573; --line: #d9dde3; --link: #0a58ca;
+    --up: #1a7f37; --down: #c62828; --unk: #8b95a1; --warn: #9a6700; --track: #e6e9ee; --bar: #2f6fdb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171b; --card: #1d2228; --ink: #e8ebef; --muted: #9aa5b1; --line: #2d343c; --link: #6ea8fe;
+      --up: #3fb950; --down: #f47067; --unk: #768390; --warn: #d4a72c; --track: #2d343c; --bar: #5b9bff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  h2 { font-size: 1rem; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+  .sub { color: var(--muted); margin: 4px 0 0; }
+  .pill { font-size: .8rem; font-weight: 600; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--muted); }
+  .pill.up { color: var(--up); border-color: var(--up); } .pill.down { color: var(--down); border-color: var(--down); }
+  .bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 14px 0 4px; font-size: .9rem; color: var(--muted); }
+  .bar label { display: flex; align-items: center; gap: 6px; }
+  button { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--link); }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); margin-top: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+  .wide { grid-column: 1 / -1; }
+  dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; }
+  dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
+  .meter { margin: 0 0 12px; } .meter:last-child { margin-bottom: 0; }
+  .meter .top { display: flex; justify-content: space-between; gap: 8px; font-size: .93rem; }
+  .meter .top span:last-child { color: var(--muted); text-align: right; }
+  .track { height: 9px; border-radius: 5px; background: var(--track); overflow: hidden; margin-top: 4px; }
+  .fill { height: 100%; background: var(--bar); border-radius: 5px; }
+  .fill.hot { background: var(--warn); } .fill.full { background: var(--down); }
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  th, td { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .02em; }
+  tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; padding-right: 12px; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+  .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: var(--unk); margin-right: 7px; vertical-align: -1px; }
+  .dot.up { background: var(--up); } .dot.down { background: var(--down); } .dot.warn { background: var(--warn); }
+  .muted { color: var(--muted); }
+  code { font: .86rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+  tr.cur td { font-weight: 600; }
+  #err { display: none; margin: 12px 0 0; padding: 10px 14px; border: 1px solid var(--down); border-radius: 8px; color: var(--down); }
+  footer { margin-top: 28px; color: var(--muted); font-size: .85rem; }
+  a { color: var(--link); }
+</style>
+</head>
+<body>
+<main>
+  <h1><span id="node">cpvax</span> <span class="pill" id="state">loading</span></h1>
+  <p class="sub" id="hw"></p>
+  <div class="bar">
+    <button id="refresh" type="button">Refresh now</button>
+    <label><input type="checkbox" id="auto" checked> every 15 s</label>
+    <span id="stamp"></span>
+  </div>
+  <div id="err"></div>
+
+  <div class="grid">
+    <section class="card"><h2>System</h2><dl id="sys"></dl></section>
+    <section class="card"><h2>Memory</h2><div id="mem"></div></section>
+    <section class="card"><h2>Disks</h2><div id="disks"></div></section>
+    <section class="card wide"><h2>Services</h2><div class="scroll"><table id="svc"></table></div></section>
+    <section class="card wide"><h2>Network</h2><div class="scroll"><table id="net"></table></div></section>
+    <section class="card wide"><h2>Processes</h2><div class="scroll"><table id="procs"></table></div></section>
+    <section class="card wide"><h2>This web server</h2><div class="scroll"><table id="conf"></table></div></section>
+  </div>
+  <footer>Read from <a href="status.com">status.com</a>, a DCL procedure that reads the system and changes nothing. Times are the VAX's clock.
+    Green = running, red = expected but missing, amber = running but not listening. CPU is the total used since the process started.</footer>
+</main>
+
+<script>
+(function () {
+  // name: shown; proc: VMS process name(s) that must exist; port: a TCP/UDP service name that must be listening
+  var SERVICES = [
+    { name: "Web server",       what: "VAX/httpd: pages and CGI (this page)",  proc: "HTTPD",          port: "http" },
+    { name: "FTP",              what: "TCPware FTP server",                    proc: "TCPware_FTP",    port: "ftp" },
+    { name: "Telnet",           what: "TCPware telnet server",                 proc: "TCPware_NETCP",  port: "telnet" },
+    { name: "SNMP",             what: "TCPware SNMP agent (LibreNMS asks it)", proc: "TCPware_SNMPD",  port: "snmp" },
+    { name: "TCP/IP",           what: "TCPware network control process",       proc: "TCPware_NETCP" },
+    { name: "Name resolver",    what: "TCPware DNS resolver",                  proc: "TCPware_DNS" },
+    { name: "Rdb monitor",      what: "database monitor (WAX & TAPE needs it)", proc: "RDMS_MONITOR" },
+    { name: "Print/batch",      what: "queue manager and job control",         proc: "QUEUE_MANAGER,JOB_CONTROL" },
+    { name: "Operator and audit", what: "OPCOM, audit and security servers",   proc: "OPCOM,AUDIT_SERVER,SECURITY_SERVER" },
+    { name: "LAN and errors",   what: "LAN control and error logger",          proc: "LANACP,ERRFMT" }
+  ];
+  var MONTHS = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
+  var $ = function (id) { return document.getElementById(id); };
+  var timer = null, busy = false;
+
+  function el(tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); return n; }
+
+  // "31-OCT-2026 10:56:27.56" -> ms (the VAX clock; only differences are used)
+  function vms(s) {
+    var m = /^\s*(\d+)-([A-Za-z]{3})[A-Za-z]*-(\d+)\s+(\d+):(\d+):(\d+)/.exec(s || "");
+    return m ? Date.UTC(+m[3], MONTHS[m[2].toUpperCase()], +m[1], +m[4], +m[5], +m[6]) : NaN;
+  }
+  function span(ms) {
+    if (!(ms >= 0)) return "?";
+    var s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    return (d ? d + " d " : "") + (d || h ? h + " h " : "") + m + " min";
+  }
+  function cpu(t) { var s = t / 100, m = Math.floor(s / 60); return m ? m + "m " + Math.floor(s % 60) + "s" : s.toFixed(2) + "s"; }
+  function mb(pages) { return pages / 2048; }                   // 512-byte pages or blocks
+  function fmtMB(v) { return v >= 1024 ? (v / 1024).toFixed(v >= 10240 ? 0 : 1) + " GB" : Math.round(v) + " MB"; }
+  function trim(s) { return (s || "").replace(/^\s+|\s+$/g, ""); }
+
+  function parse(text) {
+    var r = { disk: [], proc: [], net: [], conf: [], kv: {} };
+    text.split(/\r?\n/).forEach(function (line) {
+      var i = line.indexOf("="); if (i < 1) return;
+      var k = line.slice(0, i), v = line.slice(i + 1);
+      if (k === "disk" || k === "proc" || k === "net" || k === "conf") r[k].push(v.split("|").map(trim)); else r.kv[k] = trim(v);
+    });
+    return r;
+  }
+
+  function meter(label, right, used, total) {
+    var pct = total > 0 ? Math.max(0, Math.min(100, used / total * 100)) : 0;
+    var m = el("div", null, "meter"), top = el("div", null, "top");
+    top.appendChild(el("span", label)); top.appendChild(el("span", right)); m.appendChild(top);
+    var t = el("div", null, "track"), f = el("div", null, "fill" + (pct > 95 ? " full" : pct > 85 ? " hot" : ""));
+    f.style.width = pct.toFixed(1) + "%"; t.appendChild(f); m.appendChild(t);
+    return m;
+  }
+  function row(tbl, cells, head, cls) {
+    var tr = el("tr"); if (cls) tr.className = cls;
+    cells.forEach(function (c) {
+      var td = el(head ? "th" : "td"); if (c && c.num) td.className = "num";
+      var v = c && c.node ? c.node : c && c.text != null ? c.text : c; if (v && v.nodeType) td.appendChild(v); else td.textContent = v == null ? "" : v;
+      tr.appendChild(td);
+    });
+    tbl.appendChild(tr);
+  }
+  function num(s) { return { text: s, num: true }; }
+  function dotted(cls, text) { var s = el("span"); s.appendChild(el("span", null, "dot " + cls)); s.appendChild(document.createTextNode(text)); return s; }
+
+  function draw(r) {
+    var k = r.kv, up = vms(k.now) - vms(k.boot);
+    $("node").textContent = k.node || "cpvax";
+    var st = $("state"); st.textContent = "up " + span(up); st.className = "pill up";
+    $("hw").textContent = [k.hw, "OpenVMS " + k.version, k.domain].filter(Boolean).join(" · ");
+
+    var interactive = r.proc.filter(function (p) { return p[6] === "INTERACTIVE"; });
+    var sys = clear($("sys"));
+    [["Up since", k.boot], ["VAX clock", k.now], ["Uptime", span(up)], ["CPUs", k.cpus],
+     ["Processes", r.proc.length + " (" + interactive.length + " interactive)"],
+     ["Logged in", interactive.map(function (p) { return p[2]; }).filter(function (u, i, a) { return u && a.indexOf(u) === i; }).join(", ") || "nobody"]
+    ].forEach(function (p) { sys.appendChild(el("dt", p[0])); sys.appendChild(el("dd", p[1])); });
+
+    var mem = clear($("mem")), t = +k.mem_total, f = +k.mem_free;
+    if (t) mem.appendChild(meter("Physical memory", fmtMB(mb(t - f)) + " used of " + fmtMB(mb(t)), t - f, t));
+    mem.appendChild(meter("Page file", fmtMB(mb(k.pagefile_total - k.pagefile_free)) + " used of " + fmtMB(mb(k.pagefile_total)), k.pagefile_total - k.pagefile_free, +k.pagefile_total));
+    mem.appendChild(meter("Swap file", fmtMB(mb(k.swapfile_total - k.swapfile_free)) + " used of " + fmtMB(mb(k.swapfile_total)), k.swapfile_total - k.swapfile_free, +k.swapfile_total));
+
+    var disks = clear($("disks"));
+    r.disk.forEach(function (d) {
+      var size = +d[3], free = +d[2];
+      disks.appendChild(meter(d[0] + "  " + d[1], fmtMB(mb(free)) + " free of " + fmtMB(mb(size)) + (+d[5] ? " · " + d[5] + " errors" : ""), size - free, size));
+    });
+    if (!r.disk.length) disks.appendChild(el("p", "No mounted disks reported.", "muted"));
+
+    var names = {}, started = {};
+    r.proc.forEach(function (p) { names[p[1].toLowerCase()] = true; started[p[1].toLowerCase()] = p[8]; });
+    var listening = {};
+    r.net.forEach(function (n) { var m = /\.([A-Za-z0-9_-]+)$/.exec(n[0]); if (m && (n[2] === "LISTEN" || n[2] === "")) listening[m[1].toLowerCase()] = true; });
+
+    var svc = clear($("svc")); row(svc, ["Service", "What", "State", "Running since"], true);
+    SERVICES.forEach(function (s) {
+      var procs = s.proc.split(","), have = procs.filter(function (p) { return names[p.toLowerCase()]; });
+      var procOk = have.length === procs.length, portOk = !s.port || listening[s.port];
+      var cls = procOk && portOk ? "up" : procOk ? "warn" : "down";
+      var text = procOk && portOk ? "running" : procOk ? "running, port " + s.port + " not listening" : have.length ? "partly running" : "not running";
+      row(svc, [s.name, s.what, dotted(cls, text), have.length ? started[have[0].toLowerCase()].replace(/\.\d+$/, "") : ""]);
+    });
+
+    var net = clear($("net")); row(net, ["Local", "Foreign", "State"], true);
+    r.net.forEach(function (n) { row(net, [n[0], n[1], n[2] || "(UDP)"]); });
+
+    var pr = clear($("procs")); row(pr, ["PID", "Name", "User", "State", { text: "Pri", num: true }, { text: "CPU", num: true }, { text: "I/O", num: true }, "Mode"], true);
+    r.proc.forEach(function (p) { row(pr, [p[0], p[1], p[2], p[3], num(p[4]), num(cpu(+p[5])), num(p[7]), p[6]], false, p[3] === "CUR" ? "cur" : ""); });
+
+    var cf = clear($("conf")); row(cf, ["Setting", "Value"], true);
+    r.conf.forEach(function (c) { var v = el("code", c[1] || "(not set)"); row(cf, [c[0], v]); });
+  }
+
+  function fail(msg) {
+    var st = $("state"); st.textContent = "no answer"; st.className = "pill down";
+    var e = $("err"); e.textContent = msg; e.style.display = "block";
+  }
+  function load() {
+    if (busy) return; busy = true;
+    var ctl = window.AbortController ? new AbortController() : null, to = setTimeout(function () { if (ctl) ctl.abort(); }, 30000);
+    fetch("status.com", { cache: "no-store", signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+      .then(function (text) {
+        var r = parse(text);
+        if (r.kv.end !== "1") throw new Error("the answer was cut short");
+        draw(r); $("err").style.display = "none";
+        $("stamp").textContent = "updated " + new Date().toLocaleTimeString();
+      })
+      .catch(function (e) { fail("Could not read the VAX: " + e.message + ". It may be off or busy; this page is served by the VAX itself."); })
+      .then(function () { clearTimeout(to); busy = false; schedule(); });
+  }
+  function schedule() {
+    clearTimeout(timer);
+    if ($("auto").checked) timer = setTimeout(function () { if (document.hidden) schedule(); else load(); }, 15000);
+  }
+  $("refresh").addEventListener("click", load);
+  $("auto").addEventListener("change", function () { if ($("auto").checked) load(); else clearTimeout(timer); });
+  load();
+})();
+</script>
+</body>
+</html>
