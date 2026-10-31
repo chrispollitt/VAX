@@ -412,8 +412,9 @@ $!
 $!$ @SYS$STARTUP:DCE$RPC_STARTUP.COM
 $!
 $!@SYS$STARTUP:NETLIB_STARTUP  <-- OLD
-$! Start http server
-$ submit /name=httpd_vax /log_file=cpvax$dua1:[lighttpd.log]httpd_vax.log cpvax$dua1:[lighttpd.bin]httpd_vax
+$! Start http server (the DEC C one, HTTPD.EXE; the old Perl one failed because hostname() is cpvax.lan)
+$ @CPVAX$DUA1:[LIGHTTPD.BIN]START_HTTPD
+$!$ submit /name=httpd_vax /log_file=cpvax$dua1:[lighttpd.log]httpd_vax.log cpvax$dua1:[lighttpd.bin]httpd_vax  <-- OLD
 $!
 $!
 $! Start Rdb: the monitor, and the protected images (RDMSHRP.EXE) that SQL$ and WAXR need.  Nothing else starts it, and
