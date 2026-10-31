@@ -57,7 +57,7 @@ what the WAXR program itself allows.
 
 4. Put the credentials where the web app reads them (on cpbee, NOT in the repo):
    $ ssh cpbee
-   $ cp ~/gh_cp/VAX/waxweb/deploy/waxweb.env.example ~/.config/waxweb.env     # or create it by hand
+   $ cp ~/gh_cp/VAX/apps/waxweb/deploy/waxweb.env.example ~/.config/waxweb.env     # or create it by hand
    $ chmod 600 ~/.config/waxweb.env
    $ nano ~/.config/waxweb.env      # set VAX_PASS to the password from step 1
 

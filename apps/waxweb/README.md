@@ -74,7 +74,7 @@ on CPU and network), so the VAX could switch itself off under an open page.  Wat
 1. **The VAX side** -- create the dedicated low-privilege account and grant it the program + database:
    see `deploy/vms_account.txt`.
 2. **On cpbee** (where the simh VAX runs; it reaches OpenVMS at `192.168.20.30:23` directly, no tunnel):
-   put this repo's `VAX/waxweb` at `~/gh_cp/VAX/waxweb`, create `~/.config/waxweb.env` from
+   put this repo's `VAX/apps/waxweb` at `~/gh_cp/VAX/apps/waxweb`, create `~/.config/waxweb.env` from
    `deploy/waxweb.env.example` (mode 600) with the VMS account's password, then run `POSIX/web-ttyd/install.sh`.
    It installs the user unit `web-ttyd-waxweb.service` (waxweb on `127.0.0.1:8088`) and the nginx location
    that serves it at **https://192.168.10.1:8444/waxweb/** behind the same password as the terminal apps.
