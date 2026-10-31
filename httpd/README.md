@@ -19,6 +19,7 @@ It replaces the Perl `HTTP::Daemon` script that used to run as `[LIGHTTPD.BIN]HT
 | `HTTPD_RUN.COM` | what the detached process runs: `@HTTPD_CONFIG`, then `HTTPD.EXE` |
 | `START_HTTPD.COM` | `@START_HTTPD` starts it detached as process `HTTPD`; `@START_HTTPD STOP` stops it |
 | `www/` | the sample site: your old test pages, with the CGIs rewritten as ordinary CGIs |
+| `www/status.html`, `www/status.com` | the status page, `http://cpvax.cmnet/status.html` (see below) |
 | `tests/run_tests.sh` | builds the POSIX version and checks about 60 things with curl |
 
 ## Install (as done on cpvax)
@@ -38,6 +39,20 @@ $ @CPVAX$DUA1:[LIGHTTPD.BIN]START_HTTPD
 
 To start it at boot, put `$ @CPVAX$DUA1:[LIGHTTPD.BIN]START_HTTPD` in `SYSTARTUP_VMS.COM`
 (where the line that submitted the old `HTTPD_VAX` batch job was).
+
+## Status page
+
+`http://cpvax.cmnet/status.html` shows how the VAX is doing: uptime, memory, page file, disks, the services that should be
+running (each green, red or amber), the TCP/IP servers and connections, every process, and this server's settings. It
+refreshes every 15 seconds (not while the tab is hidden).
+
+* `www/status.com` is a DCL CGI. It only reads: lexicals (`F$GETSYI`, `F$GETDVI`, `F$GETJPI` over all processes with
+  `F$PID`), `SHOW MEMORY/PHYSICAL` and TCPware's `NETSTAT -a`, each piped to a scratch file in `HTTPD_TMP` that is
+  deleted again. It prints one fact per line (`key=value`, and `disk=`, `proc=`, `net=`, `conf=` rows with `|` between
+  the fields) and ends with `end=1`, so a cut-off answer is noticed. A request takes about a second.
+* `www/status.html` draws that. To list another service, add a line to `SERVICES` at the top of its script: the VMS
+  process name(s) that must exist and, if it listens, its port name as `NETSTAT` shows it (`http`, `ftp`, `telnet`...).
+* Inside the CGI, `SYS$INPUT` is the request body, so do not pipe into `SEARCH SYS$INPUT`; read the file instead.
 
 ## Settings
 
