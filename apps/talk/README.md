@@ -9,6 +9,7 @@ plus two small DCL wrappers.
 |------|------|
 | `TALK.COM` | `TALK user[@host] [tty]`: for a user on another host, lower-cases the name, host and tty (DCL upcases unquoted parameters; talkd compares names as written), then runs `TCPWARE:TALK` |
 | `PHONE.COM` | `PHONE [DIAL] user[@host]` calls through `TALK.COM`; `PHONE` asks who; `PHONE ANSWER` explains how to answer; `PHONE NATIVE` runs the VMS PHONE |
+| `SYSOP.COM` | `SYSOP` = `TALK SYSTEM`, a call to the sysop (the BBS homage); the GUEST account's `LOGIN.COM` defines it, nobody else gets it |
 | `TALK_SETUP.COM` | defines the global symbols `TALK` and `PHONE` as `@` these two procedures (a symbol beats the DCL verb) |
 | `INSTALL_TALK.COM` | creates `CPVAX$DUA1:[TALK]`, copies the three procedures there, prints the `SYLOGIN` line |
 | `tests/talktest.py` | the real exchange: logs in to cpvax (telnet, `~/.netrc`) and cpbee (ssh), has one call the other, answers, and checks a line each way |
