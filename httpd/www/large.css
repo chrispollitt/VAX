@@ -1,0 +1,30 @@
+body {
+  background: white;
+  color: black;
+}
+
+span#charWidth {
+  border: 0px solid #000000;
+  font-family: Monospace;
+  color: white;
+  white-space: pre;
+  border-radius: 0px;
+  margin: auto;
+}
+
+div#textArea0 {
+  border: 0px solid #000000;
+  font-size: small;
+  color: lightgray;
+  border-radius: 0px;
+  margin: auto;
+}
+
+div#textArea1 {
+  border: 0px solid #000000;
+  font-family: Monospace;
+  color: black;
+  white-space: pre;
+  border-radius: 0px;
+  margin: auto;
+}

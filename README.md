@@ -11,6 +11,7 @@ Little programs for a real (well, hobbyist) **OpenVMS VAX V7.3** system, written
 | [`waxr/`](waxr) | **WAX & TAPE** - an 80s vinyl + cassette collection tracker: DEC COBOL + embedded SQL on DEC Rdb |
 | [`waxweb/`](waxweb) | a modern web front end for WAXR that **screen-scrapes** the VAX over telnet (Python, no dependencies) |
 | [`guest/`](guest) | `CREATE_GUEST.COM` - sets up a shared, unprivileged GUEST account for visitors (untested so far) |
+| [`httpd/`](httpd) | a small web server with Perl/DCL CGI, replacing the old Perl `HTTP::Daemon` script |
 
 Each directory holds the source plus a `BUILD_*.COM` DCL procedure that compiles it
 and links it (the C programs also define a foreign command to run them).

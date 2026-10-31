@@ -1,0 +1,30 @@
+$ ! BUILD_HTTPD.COM - compile and link HTTPD.C
+$ ! Run from the directory that holds HTTPD.C:  @BUILD_HTTPD
+$ !
+$ ! The socket calls come from TCPware's UCX-compatible library (or UCX itself); the
+$ ! link below tries the likely places in turn and says which one worked.
+$ !
+$ ON ERROR THEN CONTINUE
+$ ! (TCPware's headers have no prototypes, so the socket calls are "implicitly declared": harmless)
+$ CC HTTPD /INCLUDE_DIRECTORY=TCPWARE_INCLUDE: /WARNINGS=DISABLE=IMPLICITFUNC
+$ IF F$SEARCH("HTTPD.OBJ") .EQS. "" THEN GOTO FAIL
+$ TRY = 0
+$NEXT:
+$ TRY = TRY + 1
+$ IF TRY .EQ. 1 THEN OPT = ""
+$ IF TRY .EQ. 2 THEN OPT = ", SYS$SHARE:VAXCRTL/SHAREABLE"
+$ IF TRY .EQ. 3 THEN OPT = ", SYS$LIBRARY:UCX$IPC_SHR/SHAREABLE, SYS$SHARE:VAXCRTL/SHAREABLE"
+$ IF TRY .EQ. 4 THEN OPT = ", TCPWARE:UCX$IPC_SHR/SHAREABLE, SYS$SHARE:VAXCRTL/SHAREABLE"
+$ IF TRY .EQ. 5 THEN OPT = ", TCPWARE:UCX$IPC/LIBRARY, SYS$SHARE:VAXCRTL/SHAREABLE"
+$ IF TRY .GT. 5 THEN GOTO FAIL
+$ SET MESSAGE /NOFACILITY/NOSEVERITY/NOIDENTIFICATION/NOTEXT
+$ LINK /NOMAP /EXECUTABLE=HTTPD.EXE HTTPD'OPT'
+$ LSTAT = $STATUS
+$ SET MESSAGE /FACILITY/SEVERITY/IDENTIFICATION/TEXT
+$ IF .NOT. LSTAT THEN GOTO NEXT
+$ WRITE SYS$OUTPUT "Linked with: HTTPD''OPT'"
+$ WRITE SYS$OUTPUT "Built.  HTTPD_RUN runs it, START_HTTPD starts it detached."
+$ EXIT
+$FAIL:
+$ WRITE SYS$OUTPUT "Build failed."
+$ EXIT
