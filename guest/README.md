@@ -44,10 +44,11 @@ Running it again is harmless: if the account already exists it says so and chang
    /ACCOUNT=GUEST /MAXJOBS=4 /PRCLM=3 /FLAGS=(DISMAIL) /NOBATCH`.
 5. `CREATE/DIRECTORY` the home directory, owned by the account, no group or world access.
 6. Writes a minimal `LOGIN.COM` there: `SET TERMINAL/INQUIRE`, a prompt, a welcome message,
-   and commented-out `ARTY :==` / `LIFE :==` lines in the form `BUILD_ARTY.COM` and
-   `BUILD_LIFE.COM` use. Edit the device and directory in those lines to where the
-   `.EXE` files really are, then remove the leading `!`. The file is owned by the account but
-   read-only for it.
+   and the games and chat commands: `@CPVAX$DUA1:[SYSTEM.GAMES]GAMES_SETUP` (the `GAMES` menu, `ARTY`,
+   `LIFE`, `TETRIS`, `ZK`, `FROTZ`: see [`../games`](../games)) and `SYSOP :== @CPVAX$DUA1:[TALK]SYSOP`
+   (a call to `TALK SYSTEM`: see [`../apps/talk`](../apps/talk)). Each line does nothing if its files
+   are missing. `TALK` and `PHONE` need no line here: `SYLOGIN.COM` defines them for everybody. The
+   file is owned by the account but read-only for it.
 7. Shows the account record as AUTHORIZE now holds it, warns if the password still shows
    as pre-expired, and prints a summary and the undo commands.
 

@@ -6,14 +6,17 @@ Little programs for a real (well, hobbyist) **OpenVMS VAX V7.3** system, written
 
 | Program | What it is |
 |---------|------------|
-| [`life/`](life) | Conway's Game of Life on a wrap-around 22x78 world |
-| [`arty/`](arty) | **ARTY** - an artillery duel against a CPU gunner, with a shop, wind, craters, MIRVs... |
-| [`waxr/`](waxr) | **WAX & TAPE** - an 80s vinyl + cassette collection tracker: DEC COBOL + embedded SQL on DEC Rdb |
-| [`waxweb/`](waxweb) | a modern web front end for WAXR that **screen-scrapes** the VAX over telnet (Python, no dependencies) |
-| [`guest/`](guest) | `CREATE_GUEST.COM` - sets up a shared, unprivileged GUEST account for visitors (untested so far) |
-| [`httpd/`](httpd) | a small web server with Perl/DCL CGI, replacing the old Perl `HTTP::Daemon` script |
+| [`games/life/`](games/life) | Conway's Game of Life on a wrap-around 22x78 world |
+| [`games/arty/`](games/arty) | **ARTY** - an artillery duel against a CPU gunner, with a shop, wind, craters, MIRVs... |
+| [`apps/waxr/`](apps/waxr) | **WAX & TAPE** - an 80s vinyl + cassette collection tracker: DEC COBOL + embedded SQL on DEC Rdb |
+| [`apps/waxweb/`](apps/waxweb) | a modern web front end for WAXR that **screen-scrapes** the VAX over telnet (Python, no dependencies) |
+| [`apps/talk/`](apps/talk) | `TALK` and `PHONE` on the VAX, going through TCPware's TALKD to the LAN's talk daemon on cpbee |
+| [`guest/`](guest) | `CREATE_GUEST.COM` - sets up a shared, unprivileged GUEST account for visitors |
+| [`httpd/`](httpd) | a small web server with Perl/DCL CGI and a status page, replacing the old Perl `HTTP::Daemon` script |
+| [`tcpware/`](tcpware) | cpvax's TCPware configuration (hosts, `TCPWARE_CONFIGURE.COM`) |
+| [`simh/`](simh) | the simulator side on cpbee: on-demand power-on and idle shutdown, the web terminals |
 
-Each directory holds the source plus a `BUILD_*.COM` DCL procedure that compiles it
+The games and `apps/waxr` hold the source plus a `BUILD_*.COM` DCL procedure that compiles it
 and links it (the C programs also define a foreign command to run them).
 
 ## Building on the VAX
@@ -135,7 +138,7 @@ Needs **Rdb** (the full development kit, for the SQL precompiler) and DEC COBOL,
 monitor running (`@SYS$STARTUP:RMONSTART`). Nothing starts it at boot unless you tell it to: on
 cpvax a fresh boot left Rdb stopped and WAXR failed with `%RDB-E-UNAVAILABLE2` /
 `%SYSTEM-F-PROTINSTALL` (shown by the program only as a garbled `SQLCODE` and "The shelf is bare");
-`@SYS$STARTUP:RMONSTART` fixed it by hand. [`waxr/vms-config/SYSTARTUP_VMS.COM`](waxr/vms-config/SYSTARTUP_VMS.COM)
+`@SYS$STARTUP:RMONSTART` fixed it by hand. [`apps/waxr/vms-config/SYSTARTUP_VMS.COM`](apps/waxr/vms-config/SYSTARTUP_VMS.COM)
 is cpvax's site startup file with that line added, so it happens at every boot. Put the files in one
 directory (ASCII transfer):
 
@@ -171,21 +174,21 @@ Things learned getting it to build on DEC COBOL / Rdb 6.0:
 
 ## WAXWEB (a web front end that screen-scrapes the VAX)
 
-[`waxweb/`](waxweb) puts a modern single-page web UI (search, filters, add/sell dialogs, stats, a live
+[`apps/waxweb/`](apps/waxweb) puts a modern single-page web UI (search, filters, add/sell dialogs, stats, a live
 "VAX terminal" drawer) on top of WAXR - without touching the COBOL program's interface. The server logs in
 to the VAX over telnet, starts `@RUN_WAXR`, and *types at its menus like a person*: it answers the pager,
 answers the "Is it this one? (Y/N)" pickers by exact match, parses the fixed-width screens into JSON, and
 double-checks before it sells anything.
 
-[![WAX & TAPE web UI](waxweb/screenshot.png)](waxweb)
+[![WAX & TAPE web UI](apps/waxweb/screenshot.png)](apps/waxweb)
 
 ```
  browser  <--HTTP-->  waxweb.py  <--telnet-->  VAX: @RUN_WAXR  ->  COBOL + embedded SQL  ->  Rdb
 ```
 
 Plain Python 3.7+ (standard library only) and a no-build-step vanilla JS front end. It ships with a fake
-VAX (`fakevax.py`) so you can try the UI and run the tests without a VAX: `python3 waxweb/run_demo.py`.
-The tests also parse real captured VAX screens. See [`waxweb/README.md`](waxweb/README.md) for the
+VAX (`fakevax.py`) so you can try the UI and run the tests without a VAX: `python3 apps/waxweb/run_demo.py`.
+The tests also parse real captured VAX screens. See [`apps/waxweb/README.md`](apps/waxweb/README.md) for the
 architecture, the dedicated low-privilege VMS account it needs, running it behind an ssh tunnel, and the
 security notes (it holds a VMS password and can delete records - keep it on a trusted network).
 
@@ -206,8 +209,8 @@ sub-second frame delays, both under `#ifdef __VMS`), so they build and run anywh
 VT100-ish terminal. That is how they get tested before they go over to the VAX:
 
 ```
-gcc -ansi -pedantic -Wall -Wextra -o arty arty/ARTY.C -lm && ./arty
-gcc -ansi -pedantic -Wall -Wextra -o life life/LIFE.C && ./life 300 R
+gcc -ansi -pedantic -Wall -Wextra -o arty games/arty/ARTY.C -lm && ./arty
+gcc -ansi -pedantic -Wall -Wextra -o life games/life/LIFE.C && ./life 300 R
 ```
 
 Both are kept clean under `-ansi -pedantic -Wall -Wextra` (and ARTY under
