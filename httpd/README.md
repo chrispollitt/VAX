@@ -95,6 +95,8 @@ October 2026. `HTTP::Daemon->new(LocalAddr => hostname(), ...)` returned nothing
 `cpvax.lan` (the TCPware domain name, `TCPWARE_DOMAINNAME`), and the VAX's own resolver cannot look that name up
 (`gethostbyname` fails, and the module says `Bad hostname 'cpvax.lan'`). In the 2023 log it was just `cpvax`. Leaving out
 `LocalAddr` makes it bind fine. `SYSTARTUP_VMS.COM` submits the old job at every boot, so it crashed again each time.
+Since 2026-10-31 the domain is `cmnet` everywhere: `TCPWARE_DOMAINNAME` is `cpvax.cmnet` (see `../tcpware/`), which the VAX
+resolves from its host table, so `hostname()` works again.
 
 ## Testing
 
