@@ -13,12 +13,16 @@ $ FROTZ := $'DIR'VAXFROTZ.EXE
 $ TITLES = "HHGG=The Hitchhiker Guide to the Galaxy,ZORK=Zork,PLANETFALL=Planetfall,STATIONFALL=Stationfall,"
 $ TITLES = TITLES + "BUREAUCRACY=Bureaucracy,ROGUE=Rogue,ADVENT=Colossal Cave Adventure,"
 $ TITLES = TITLES + "COLOSSALCAVE=Colossal Cave Adventure (another port),ZDUNGEON=Dungeon,BAZIC=BAZIC,SPACEST2=Space Station 2"
+$! Ctrl-Y: at a menu it leaves the arcade tidily; inside a game (LIFE has no other way out) it ends only the game
+$! and brings the menu back, instead of killing this whole procedure.
 $MENU:
+$ ON CONTROL_Y THEN GOTO BYE
+$ @'DIR'RESET                           ! a game that was interrupted can leave the display in a odd state
 $ WRITE SYS$OUTPUT ""
 $ WRITE SYS$OUTPUT "  ==========  C P V A X   A R C A D E  =========="
 $ WRITE SYS$OUTPUT ""
 $ WRITE SYS$OUTPUT "   1  ARTY      artillery duel against a CPU gunner (Q quits)"
-$ WRITE SYS$OUTPUT "   2  LIFE      the game of life, 500 generations (Ctrl-Y stops it)"
+$ WRITE SYS$OUTPUT "   2  LIFE      the game of life, 500 generations (any key stops it)"
 $ WRITE SYS$OUTPUT "   3  TETRIS    falling blocks (press I for the instructions)"
 $ WRITE SYS$OUTPUT "   4  ZK        Spitbrook, a 1985 text adventure from DEC (QUIT leaves it)"
 $ WRITE SYS$OUTPUT "   5  STORIES   Infocom-style text adventures: Zork, Hitchhiker, Planetfall ..."
@@ -41,11 +45,13 @@ $! Inside a procedure SYS$INPUT is this file, not the terminal, and the games re
 $! (ARTY quit at once, reading the next line of this procedure): point it at the terminal for the one run.
 $RUNIT:
 $ SPEC = DIR + IMG
+$ ON CONTROL_Y THEN GOTO MENU
 $ DEFINE/USER_MODE SYS$INPUT SYS$COMMAND
 $ RUN 'SPEC'
 $ GOTO MENU
 $!
 $STORIES:
+$ ON CONTROL_Y THEN GOTO MENU
 $ N = 0
 $ LIST = ","                            ! ,NAME.TYPE,NAME.TYPE, ... : element K is story K
 $ WRITE SYS$OUTPUT ""
@@ -86,6 +92,7 @@ $ IF K .LT. 1 .OR. K .GT. N THEN GOTO STORIES
 $ STORY = F$ELEMENT(K,",",LIST)
 $ WRITE SYS$OUTPUT ""
 $ SPEC = ZD + STORY
+$ ON CONTROL_Y THEN GOTO STORIES
 $ DEFINE/USER_MODE SYS$INPUT SYS$COMMAND
 $ FROTZ 'SPEC'
 $ GOTO STORIES

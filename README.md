@@ -200,7 +200,9 @@ $ LIFE 300 R      ! R-pentomino, 300 generations
 ```
 
 The world is a 22x78 torus, so gliders wrap around the edges. It stops early if the world
-dies out or settles into a still life or a period-2 oscillator. Ctrl-Y aborts.
+dies out or settles into a still life or a period-2 oscillator. Any key (the space bar, say) stops it; Ctrl-Y aborts.
+The key check is a type-ahead peek on the terminal (VMS) or a non-blocking read (POSIX); `games/life/test_keystop.py`
+checks it on a pseudo-terminal.
 
 ## Developing off the VAX
 

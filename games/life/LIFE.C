@@ -9,15 +9,27 @@
  *
  * The world is a 22 x 78 torus, so gliders wrap around the edges.
  * It stops early if the world dies out or settles into a still
- * life or a period-2 oscillator.  Ctrl-Y aborts at any time.
+ * life or a period-2 oscillator.  Any key (the space bar, say)
+ * stops it too; Ctrl-Y aborts at any time.
  */
+#ifndef __VMS
+#define _POSIX_C_SOURCE 200112L         /* termios, for the key check */
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
 #ifdef __VMS
+#include <descrip.h>
+#include <iodef.h>
 #include <lib$routines.h>
+#include <ssdef.h>
+#include <starlet.h>
+#else
+#include <signal.h>
+#include <termios.h>
+#include <unistd.h>
 #endif
 
 #define ROWS     22
@@ -29,18 +41,108 @@ static char nxt[ROWS][COLS];    /* scratch for the next one    */
 static char old[ROWS][COLS];    /* generation before cur       */
 static char old2[ROWS][COLS];   /* generation before old       */
 
-static void pause_frame(void)
+/* A key typed while it runs stops the game.  key_init() once at the start; key_pressed() says whether any
+ * key has been typed since the last call (and swallows it, so it does not reach whatever runs next).
+ * Without a terminal on the input it never reports a key. */
+#ifdef __VMS
+static unsigned short tt_chan;
+static int have_tt;
+
+static void key_init(void)
+{
+    $DESCRIPTOR(tt, "SYS$COMMAND");     /* the terminal, even when run from a command procedure */
+
+    have_tt = (sys$assign(&tt, &tt_chan, 0, 0) & 1);
+}
+
+static int key_pressed(void)
+{
+    struct {
+        unsigned short count;           /* characters waiting in the type-ahead buffer */
+        char first;
+        char reserved;
+        unsigned long more;
+    } tah;
+    unsigned short iosb[4];
+    char buf[80];
+    unsigned n;
+
+    if (!have_tt)
+        return 0;
+    if (!(sys$qiow(0, tt_chan, IO$_SENSEMODE | IO$M_TYPEAHDCNT, iosb, 0, 0, &tah, 8, 0, 0, 0, 0) & 1))
+        return 0;
+    if (tah.count == 0)
+        return 0;
+    n = tah.count > sizeof buf ? (unsigned) sizeof buf : tah.count;
+    sys$qiow(0, tt_chan, IO$_READVBLK | IO$M_TIMED | IO$M_NOECHO, iosb, 0, 0, buf, n, 0, 0, 0, 0);
+    return 1;
+}
+#else
+static struct termios saved_tio;
+static int tio_saved;
+
+static void key_restore(void)
+{
+    if (tio_saved) {
+        tcsetattr(0, TCSANOW, &saved_tio);
+        tio_saved = 0;
+    }
+}
+
+static void on_signal(int sig)
+{
+    key_restore();
+    _exit(128 + sig);
+}
+
+static void key_init(void)
+{
+    struct termios raw;
+
+    if (!isatty(0) || tcgetattr(0, &saved_tio) != 0)
+        return;
+    raw = saved_tio;
+    raw.c_lflag &= ~(tcflag_t) (ICANON | ECHO);
+    raw.c_cc[VMIN] = 0;                 /* read() returns at once, with or without a key */
+    raw.c_cc[VTIME] = 0;
+    if (tcsetattr(0, TCSANOW, &raw) == 0) {
+        tio_saved = 1;
+        atexit(key_restore);
+        signal(SIGINT, on_signal);
+        signal(SIGTERM, on_signal);
+    }
+}
+
+static int key_pressed(void)
+{
+    char ch;
+    int got = 0;
+
+    if (!tio_saved)
+        return 0;
+    while (read(0, &ch, 1) == 1)
+        got = 1;
+    return got;
+}
+#endif
+
+static void pause_for(double secs)
 {
 #ifdef __VMS
-    float secs = 0.08f;
+    float s = (float) secs;
 
-    lib$wait(&secs);
+    lib$wait(&s);
 #else
-    clock_t end = clock() + CLOCKS_PER_SEC / 12;
+    clock_t end = clock() + (clock_t) (secs * CLOCKS_PER_SEC);
 
     while (clock() < end)
         ;
 #endif
+}
+
+static void pause_frame(void)
+{
+    pause_for(0.08);
 }
 
 static int neighbours(int r, int c)
@@ -109,7 +211,7 @@ static void draw(int gen, int pop)
         fputs(line, stdout);
         fputs("\n", stdout);
     }
-    printf("Generation %5d   Population %5d   (Ctrl-Y to quit)\n", gen, pop);
+    printf("Generation %5d   Population %5d   (any key to quit)\n", gen, pop);
 }
 
 int main(int argc, char *argv[])
@@ -125,11 +227,21 @@ int main(int argc, char *argv[])
     }
 
     pop = seed(rpent);
+    key_init();
+    /* The Enter that started the game can still be on its way (a telnet Enter is a CR and then another character),
+     * so wait a moment and swallow whatever has arrived: only keys typed after the start stop the game. */
+    pause_for(0.4);
+    (void) key_pressed();
     fputs("\033[2J", stdout);
 
     for (gen = 0; gen < gens; gen++) {
         draw(gen, pop);
+        fflush(stdout);
         pause_frame();
+        if (key_pressed()) {
+            why = "you pressed a key";
+            break;
+        }
         pop = step();
         if (pop == 0) {
             why = "everything died";
