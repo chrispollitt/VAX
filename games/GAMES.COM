@@ -28,11 +28,21 @@ $ READ/END_OF_FILE=BYE/PROMPT="  Which one? " SYS$COMMAND CH
 $ CH = F$EDIT(CH,"TRIM,UPCASE")
 $ IF CH .EQS. "" THEN GOTO MENU
 $ IF CH .EQS. "0" .OR. CH .EQS. "Q" .OR. CH .EQS. "QUIT" .OR. CH .EQS. "EXIT" THEN GOTO BYE
-$ IF CH .EQS. "1" .OR. CH .EQS. "ARTY" THEN RUN 'DIR'ARTY
-$ IF CH .EQS. "2" .OR. CH .EQS. "LIFE" THEN RUN 'DIR'LIFE
-$ IF CH .EQS. "3" .OR. CH .EQS. "TETRIS" THEN RUN 'DIR'TETRIS
-$ IF CH .EQS. "4" .OR. CH .EQS. "ZK" THEN RUN 'DIR'ZK
+$ IMG = ""
+$ IF CH .EQS. "1" .OR. CH .EQS. "ARTY" THEN IMG = "ARTY"
+$ IF CH .EQS. "2" .OR. CH .EQS. "LIFE" THEN IMG = "LIFE"
+$ IF CH .EQS. "3" .OR. CH .EQS. "TETRIS" THEN IMG = "TETRIS"
+$ IF CH .EQS. "4" .OR. CH .EQS. "ZK" THEN IMG = "ZK"
+$ IF IMG .NES. "" THEN GOTO RUNIT
 $ IF CH .EQS. "5" .OR. CH .EQS. "STORIES" .OR. CH .EQS. "FROTZ" THEN GOTO STORIES
+$ GOTO MENU
+$!
+$! Inside a procedure SYS$INPUT is this file, not the terminal, and the games read their keys from SYS$INPUT
+$! (ARTY quit at once, reading the next line of this procedure): point it at the terminal for the one run.
+$RUNIT:
+$ SPEC = DIR + IMG
+$ DEFINE/USER_MODE SYS$INPUT SYS$COMMAND
+$ RUN 'SPEC'
 $ GOTO MENU
 $!
 $STORIES:
@@ -76,6 +86,7 @@ $ IF K .LT. 1 .OR. K .GT. N THEN GOTO STORIES
 $ STORY = F$ELEMENT(K,",",LIST)
 $ WRITE SYS$OUTPUT ""
 $ SPEC = ZD + STORY
+$ DEFINE/USER_MODE SYS$INPUT SYS$COMMAND
 $ FROTZ 'SPEC'
 $ GOTO STORIES
 $BYE:
