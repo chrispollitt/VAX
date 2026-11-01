@@ -9,6 +9,17 @@ terminals (a VT100 login over telnet) with the user name and the shared password
 > has **never been executed**. It prints every step as it goes so the first real run is
 > easy to follow. Read the "Unverified" list below and watch those spots.
 
+## The pre-login message
+
+Telnet to cpvax shows how to log in as the guest before the `Username:` prompt, so visitors need no hint. That text is
+the system logical `SYS$ANNOUNCE`, set at every boot by `SYS$COMMON:[SYSMGR]SYSTARTUP_VMS.COM` (the copy in this repo is
+[`../apps/waxr/vms-config/SYSTARTUP_VMS.COM`](../apps/waxr/vms-config/SYSTARTUP_VMS.COM)). The wording is **not** in the
+procedure: it reads the file `SYS$COMMON:[SYSMGR]ANNOUNCE.TXT`, one message line per file line, so the login details stay
+out of git. [`ANNOUNCE.TXT.example`](ANNOUNCE.TXT.example) shows the shape. Without the file the old one-line
+"Welcome to OpenVMS" message is used. After editing the file, the new text applies at the next boot; to apply it at once,
+run the `ANN` lines of the startup procedure as SYSTEM (or `DEFINE/SYSTEM SYS$ANNOUNCE` by hand, using `F$FAO("!/")` for line breaks).
+When the guest login changes, change that file.
+
 ## Use
 
 Get `CREATE_GUEST.COM` onto the VAX in **ASCII** mode (FTP `ascii`, or paste). The TCPware

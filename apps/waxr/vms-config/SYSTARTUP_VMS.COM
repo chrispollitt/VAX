@@ -147,7 +147,29 @@ $!
 $!
 $! This command defines a message to be displayed before each user logs in.
 $!
-$ DEFINE /SYSTEM SYS$ANNOUNCE " Welcome to OpenVMS (TM) ''ARCH_NAME' Operating System, Version ''F$GETSYI("VERSION")'"
+$! cpvax: the message tells visitors how to log in as the guest.  Its text is the file ANNOUNCE.TXT in this directory
+$! (one message line per file line; it holds the guest login and is not in git: VAX/guest/ANNOUNCE.TXT.example shows
+$! the shape).  Several lines, so each is joined with F$FAO("!/"), a line break.  Without the file, the old one-line
+$! message is used.
+$ NL = F$FAO("!/")
+$ ANN = ""
+$ IF F$SEARCH("SYS$COMMON:[SYSMGR]ANNOUNCE.TXT") .EQS. "" THEN GOTO ANN_OLD
+$ OPEN/READ/ERROR=ANN_OLD ANNF SYS$COMMON:[SYSMGR]ANNOUNCE.TXT
+$ANN_LOOP:
+$ READ/END_OF_FILE=ANN_DONE ANNF ANNLINE
+$ ANN = ANN + NL + ANNLINE
+$ GOTO ANN_LOOP
+$ANN_DONE:
+$ CLOSE ANNF
+$ ANN = ANN + NL
+$ GOTO ANN_DEFINE
+$ANN_OLD:
+$ ANN = " Welcome to OpenVMS (TM) ''ARCH_NAME' Operating System, Version ''F$GETSYI("VERSION")'"
+$ANN_DEFINE:
+$ DEFINE /SYSTEM SYS$ANNOUNCE "''ANN'"
+$ DELETE/SYMBOL NL
+$ DELETE/SYMBOL ANN
+$ IF F$TYPE(ANNLINE) .NES. "" THEN DELETE/SYMBOL ANNLINE
 $!
 $!
 $! This command defines a message or file to be displayed after each user logs in.
