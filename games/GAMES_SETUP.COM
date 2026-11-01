@@ -1,7 +1,7 @@
 $ ! GAMES_SETUP.COM - the game commands for this VAX:  GAMES (a menu), ARTY, LIFE, TETRIS, ZK, FROTZ
 $ !
-$ ! Lives with the games, in CPVAX$DUA1:[SYSTEM.GAMES].  Call it from a LOGIN.COM (the GUEST account does):
-$ !     $ IF F$SEARCH("CPVAX$DUA1:[SYSTEM.GAMES]GAMES_SETUP.COM") .NES. "" THEN @CPVAX$DUA1:[SYSTEM.GAMES]GAMES_SETUP
+$ ! Lives with the games, in CPVAX$DUA1:[GAMES].  Call it from a LOGIN.COM (the GUEST account does):
+$ !     $ IF F$SEARCH("CPVAX$DUA1:[GAMES]GAMES_SETUP.COM") .NES. "" THEN @CPVAX$DUA1:[GAMES]GAMES_SETUP
 $ ! It finds the games next to itself, so moving the directory only needs the LOGIN.COM line changed.
 $ !
 $ ! GAMES   the menu (GAMES.COM)          FROTZ   an Infocom story player: FROTZ ZCODE:ZORK.Z5

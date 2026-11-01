@@ -55,7 +55,7 @@ Running it again is harmless: if the account already exists it says so and chang
    /ACCOUNT=GUEST /MAXJOBS=4 /PRCLM=3 /FLAGS=(DISMAIL) /NOBATCH`.
 5. `CREATE/DIRECTORY` the home directory, owned by the account, no group or world access.
 6. Writes a minimal `LOGIN.COM` there: `SET TERMINAL/INQUIRE`, a prompt, a welcome message,
-   and the games and chat commands: `@CPVAX$DUA1:[SYSTEM.GAMES]GAMES_SETUP` (the `GAMES` menu, `ARTY`,
+   and the games and chat commands: `@CPVAX$DUA1:[GAMES]GAMES_SETUP` (the `GAMES` menu, `ARTY`,
    `LIFE`, `TETRIS`, `ZK`, `FROTZ`: see [`../games`](../games)) and `SYSOP :== @CPVAX$DUA1:[TALK]SYSOP`
    (a call to `TALK SYSTEM`: see [`../apps/talk`](../apps/talk)). Each line does nothing if its files
    are missing. `TALK` and `PHONE` need no line here: `SYLOGIN.COM` defines them for everybody. The

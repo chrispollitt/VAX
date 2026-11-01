@@ -1,6 +1,6 @@
 $ ! GAMES.COM - a menu of the games on this VAX.   Usage:  GAMES
 $ !
-$ ! Run from the directory that holds the games (CPVAX$DUA1:[SYSTEM.GAMES]); GAMES_SETUP.COM makes GAMES the
+$ ! Run from the directory that holds the games (CPVAX$DUA1:[GAMES]); GAMES_SETUP.COM makes GAMES the
 $ ! command for it.  The Infocom-style stories are the .Z3/.Z5 files in the ZCODE subdirectory: add a file there
 $ ! and it shows up in the story list (give it a nicer title in the TITLES list below, if you like).
 $ !
