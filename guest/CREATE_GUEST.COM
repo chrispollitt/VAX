@@ -269,7 +269,7 @@ $ WRITE CRGF "$ WRITE SYS$OUTPUT ""Please do not keep anything here that you car
 $ WRITE CRGF "$ WRITE SYS$OUTPUT "" """
 $ WRITE CRGF "$ ! The games (VAX/games: GAMES, ARTY, LIFE, TETRIS, ZK, FROTZ) and SYSOP (talk to SYSTEM).  TALK and PHONE"
 $ WRITE CRGF "$ ! come from SYLOGIN.  Each line does nothing if its files are not there."
-$ WRITE CRGF "$ IF F$SEARCH(""CPVAX$DUA1:[SYSTEM.GAMES]GAMES_SETUP.COM"") .NES. """" THEN @CPVAX$DUA1:[SYSTEM.GAMES]GAMES_SETUP"
+$ WRITE CRGF "$ IF F$SEARCH(""CPVAX$DUA1:[GAMES]GAMES_SETUP.COM"") .NES. """" THEN @CPVAX$DUA1:[GAMES]GAMES_SETUP"
 $ WRITE CRGF "$ IF F$SEARCH(""CPVAX$DUA1:[TALK]SYSOP.COM"") .NES. """" THEN SYSOP :== @CPVAX$DUA1:[TALK]SYSOP"
 $ WRITE CRGF "$ WRITE SYS$OUTPUT ""  GAMES   a menu of games"""
 $ WRITE CRGF "$ WRITE SYS$OUTPUT ""  SYSOP   call the sysop for a chat"""
