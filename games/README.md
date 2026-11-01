@@ -56,3 +56,10 @@ directory, or fail quietly for a guest.
   with `RUN`.
 * A game started from a batch job or with its input redirected fails (`%SYSTEM-F-FILNOTACC`, or spins writing output):
   they need a real terminal.
+* Inside a DCL procedure `SYS$INPUT` is the procedure file, not the terminal, and the games read their keys from it: ARTY quit
+  at once and ZK/Tetris failed with `%SYSTEM-F-NOPRIV`. `GAMES.COM` therefore does `DEFINE/USER_MODE SYS$INPUT SYS$COMMAND`
+  before each game (as `apps/talk/TALK.COM` does for TCPware's TALK). Do the same in any new launcher.
+* To try a game "as the guest" without the guest's login: in a SYSTEM session, open your terminal to the world
+  (`SET PROTECTION=(S:RWLP,O:RWLP,G:RWLP,W:RWLP)/DEVICE TT:`), then `SET UIC [200,200]` and
+  `SET PROCESS/PRIVILEGES=(NOALL,TMPMBX,NETMBX)`, and run it. (Without the first step Pascal programs such as ZK and Tetris
+  fail with NOPRIV, because the terminal belongs to SYSTEM; that is a test artifact, not a problem in a real guest login.)
