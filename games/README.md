@@ -7,6 +7,7 @@ world-executable so the GUEST account can run them. `GAMES_SETUP.COM` defines th
 | command | what | where it comes from |
 |---------|------|---------------------|
 | `GAMES` | menu of everything below | `GAMES.COM` here |
+| `CLEAR`, `CLS` | clear the screen | `CLEAR.COM` here (the menu runs it too, after `RESET`, before it draws itself) |
 | `RESET` | tidy the terminal after an interrupted full-screen game (`RESET FULL`: full VT100 reset) | `RESET.COM` here |
 | `ARTY` | artillery duel against a CPU gunner | [`arty/`](arty), built on the VAX |
 | `LIFE [generations] [R]` | the game of life on a wrap-around world | [`life/`](life), built on the VAX |

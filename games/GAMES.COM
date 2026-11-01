@@ -18,6 +18,7 @@ $! and brings the menu back, instead of killing this whole procedure.
 $MENU:
 $ ON CONTROL_Y THEN GOTO BYE
 $ @'DIR'RESET                           ! a game that was interrupted can leave the display in a odd state
+$ @'DIR'CLEAR                           ! and the menu starts on a clean screen
 $ WRITE SYS$OUTPUT ""
 $ WRITE SYS$OUTPUT "  ==========  C P V A X   A R C A D E  =========="
 $ WRITE SYS$OUTPUT ""
