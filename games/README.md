@@ -63,3 +63,8 @@ directory, or fail quietly for a guest.
   (`SET PROTECTION=(S:RWLP,O:RWLP,G:RWLP,W:RWLP)/DEVICE TT:`), then `SET UIC [200,200]` and
   `SET PROCESS/PRIVILEGES=(NOALL,TMPMBX,NETMBX)`, and run it. (Without the first step Pascal programs such as ZK and Tetris
   fail with NOPRIV, because the terminal belongs to SYSTEM; that is a test artifact, not a problem in a real guest login.)
+* The Tetris scoreboard is `[GAMES]TETRIS.ACN`, updated in place. A guest needs write access to it or a game that
+  beats the player's best stops at "Enter Your Name": it carries an ACL for the guest's UIC
+  (`SET FILE/ACL=(IDENTIFIER=[200,200],ACCESS=READ+WRITE) CPVAX$DUA1:[GAMES]TETRIS.ACN`). Other users keep their normal access.
+* Saved games (Frotz `.QZL`, ZK `.ZKO`) go to the player's default directory; for the guest that is `[VMSGUEST.TEMP]`
+  (see `../guest`).
