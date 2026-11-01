@@ -7,6 +7,7 @@ world-executable so the GUEST account can run them. `GAMES_SETUP.COM` defines th
 | command | what | where it comes from |
 |---------|------|---------------------|
 | `GAMES` | menu of everything below | `GAMES.COM` here |
+| `RESET` | tidy the terminal after an interrupted full-screen game (`RESET FULL`: full VT100 reset) | `RESET.COM` here |
 | `ARTY` | artillery duel against a CPU gunner | [`arty/`](arty), built on the VAX |
 | `LIFE [generations] [R]` | the game of life on a wrap-around world | [`life/`](life), built on the VAX |
 | `TETRIS` | falling blocks (VaxMagic, 1990); `I` shows the instructions | binary only, in `[GAMES]` |
@@ -66,5 +67,16 @@ directory, or fail quietly for a guest.
 * The Tetris scoreboard is `[GAMES]TETRIS.ACN`, updated in place. A guest needs write access to it or a game that
   beats the player's best stops at "Enter Your Name": it carries an ACL for the guest's UIC
   (`SET FILE/ACL=(IDENTIFIER=[200,200],ACCESS=READ+WRITE) CPVAX$DUA1:[GAMES]TETRIS.ACN`). Other users keep their normal access.
+* Ctrl-Y: `GAMES.COM` catches it (`ON CONTROL_Y`), so inside a game it ends only the game and the menu comes back, and at a
+  menu it leaves the arcade. `LIFE` also stops on any key.
+* Terminals and full-screen programs on VMS: the driver's modes (echo, pass-all, type-ahead...) are undone when a program is
+  stopped (checked: `SHOW TERMINAL` is unchanged after interrupting Tetris, ARTY and ZK), so there is no Unix-style wedged
+  terminal. What can be left is display state the program wrote as escape sequences (Tetris hides the cursor and switches
+  to the line-drawing character set); `RESET` writes the sequences that undo that, and `GAMES.COM` runs it each time the
+  menu comes back. There is no `reset` in stock DCL; `SET TERMINAL/INQUIRE` re-reads the terminal type but sends no reset.
+* Window size: TCPware's telnet server takes the client's size (NAWS) at login and again when the window is resized (checked:
+  31x101 at login, 43x133 after a resize, no command needed), so `SHOW TERMINAL` is always current. VMS has no SIGWINCH, though:
+  nothing tells a running program, which must query the terminal characteristics itself (SMG reads them when it starts). The
+  games here draw a fixed 80x24 screen and ignore the size.
 * Saved games (Frotz `.QZL`, ZK `.ZKO`) go to the player's default directory; for the guest that is `[VMSGUEST.TEMP]`
   (see `../guest`).
