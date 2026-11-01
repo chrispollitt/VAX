@@ -53,13 +53,19 @@ Running it again is harmless: if the account already exists it says so and chang
 4. Hardening, **one `MODIFY` run per qualifier**, so an unsupported one is reported and
    cannot stop the account being created: `/NOPWDEXPIRED /PWDLIFETIME=NONE /NOEXPIRATION
    /ACCOUNT=GUEST /MAXJOBS=4 /PRCLM=3 /FLAGS=(DISMAIL) /NOBATCH`.
-5. `CREATE/DIRECTORY` the home directory, owned by the account, no group or world access.
+5. `CREATE/DIRECTORY` the home directory, owned by the account, no group or world access, and a
+   `TEMP` subdirectory in it. `TEMP` is the only place the account can write: the home directory is
+   then made read-only for it (`S:RWE,O:RE`), so a visitor cannot put a `LOGIN.COM` of their own
+   there. Saved games, editor files and anything else a visitor makes land in `TEMP`.
 6. Writes a minimal `LOGIN.COM` there: `SET TERMINAL/INQUIRE`, a prompt, a welcome message,
    and the games and chat commands: `@CPVAX$DUA1:[GAMES]GAMES_SETUP` (the `GAMES` menu, `ARTY`,
    `LIFE`, `TETRIS`, `ZK`, `FROTZ`: see [`../games`](../games)) and `SYSOP :== @CPVAX$DUA1:[TALK]SYSOP`
    (a call to `TALK SYSTEM`: see [`../apps/talk`](../apps/talk)). Each line does nothing if its files
-   are missing. `TALK` and `PHONE` need no line here: `SYLOGIN.COM` defines them for everybody. The
-   file is owned by the account but read-only for it.
+   are missing. `TALK` and `PHONE` need no line here: `SYLOGIN.COM` defines them for everybody. It
+   also sets the default directory to `TEMP`, after quietly deleting what editors leave there
+   (`*.TPU$JOURNAL`, `*.TPU$WORK`, `*.TPU$SECTION`, `*.TMP`), and defines a hidden `XYZZY` that
+   answers `Nothing happens.` (the same egg as in the bidet web terminal). Saved games are kept.
+   The file is owned by the account but read-only for it.
 7. Shows the account record as AUTHORIZE now holds it, warns if the password still shows
    as pre-expired, and prints a summary and the undo commands.
 
@@ -171,5 +177,10 @@ have been stable for decades, but none of this was confirmed against V7.3 itself
   true/false tests; `EXIT %X10000002` (message-inhibited error status).
 * `ON CONTROL_Y THEN GOTO` and `READ/END_OF_FILE=label`.
 
-Known limits: a visitor can still create a newer `LOGIN.COM` in the home directory, since
-the directory is writable by the account; and the visitors share one UIC and one set of files.
+Known limits: the visitors share one UIC and one `TEMP` directory, so they can read, overwrite and delete each
+other's saved games; nothing there is cleaned out except the editor leftovers named above, so old saves stay until
+someone removes them.
+
+The Tetris scoreboard `[GAMES]TETRIS.ACN` has an ACL giving the guest's UIC read and write
+(`SET FILE/ACL=(IDENTIFIER=[200,200],ACCESS=READ+WRITE)`): without it a guest's game that beats its own best score
+stops at the "Enter Your Name" prompt, unable to record it (the process spun on the CPU with Return doing nothing).

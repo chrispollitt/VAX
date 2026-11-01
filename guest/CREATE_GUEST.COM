@@ -245,6 +245,18 @@ $DIR_CREATED:
 $ ST_DIR = "done"
 $ SAY "  created, owner ''G_UIC', no group or world access"
 $DIR_DONE:
+$ !
+$ ! A writable TEMP directory under the home, for the games' save files and anything else a visitor makes.  The home
+$ ! itself then loses its write access, so a visitor cannot put a newer LOGIN.COM of their own in it.
+$ G_TEMP = F$EXTRACT(0,F$LENGTH(G_HOME) - 1,G_HOME) + ".TEMP]"
+$ IF ST_DIR .EQS. "FAILED" THEN GOTO TEMP_DONE
+$ IF F$SEARCH("''G_HOME'TEMP.DIR;1",1) .NES. "" THEN GOTO TEMP_LOCK
+$ CREATE/DIRECTORY 'G_TEMP' /OWNER_UIC='G_UIC' /PROTECTION=(S:RWE,O:RWE,G,W)
+$ IF .NOT. $STATUS THEN SAY "  WARNING: could not create ''G_TEMP'"
+$TEMP_LOCK:
+$ SET FILE/PROTECTION=(S:RWE,O:RE,G,W) 'G_DEV'[000000]'G_DIR'.DIR
+$ SAY "  ''G_TEMP' is the writable place; the home directory is read-only for the account"
+$TEMP_DONE:
 $ SAY ""
 $ !
 $ ! ---------------------------------------------------------------- step 6
@@ -274,6 +286,18 @@ $ WRITE CRGF "$ IF F$SEARCH(""CPVAX$DUA1:[TALK]SYSOP.COM"") .NES. """" THEN SYSO
 $ WRITE CRGF "$ WRITE SYS$OUTPUT ""  GAMES   a menu of games"""
 $ WRITE CRGF "$ WRITE SYS$OUTPUT ""  SYSOP   call the sysop for a chat"""
 $ WRITE CRGF "$ WRITE SYS$OUTPUT ""  TALK    chat with other users:  TALK user@host   (or PHONE)"""
+$ WRITE CRGF "$ WRITE SYS$OUTPUT "" """
+$ WRITE CRGF "$ ! Saved games and anything else you make go in TEMP (the home directory is read-only).  Each login first"
+$ WRITE CRGF "$ ! sweeps out what editors leave behind there (TPU journals and work files, *.TMP), quietly."
+$ WRITE CRGF "$ IF F$SEARCH(""''G_HOME'TEMP.DIR;1"") .NES. """""
+$ WRITE CRGF "$ THEN"
+$ WRITE CRGF "$   DEFINE/USER_MODE SYS$OUTPUT NL:"
+$ WRITE CRGF "$   DEFINE/USER_MODE SYS$ERROR NL:"
+$ WRITE CRGF "$   DELETE/NOLOG ''G_TEMP'*.TPU$JOURNAL;*,*.TPU$WORK;*,*.TPU$SECTION;*,*.TMP;*"
+$ WRITE CRGF "$   SET DEFAULT ''G_TEMP'"
+$ WRITE CRGF "$ ENDIF"
+$ WRITE CRGF "$ XYZZY :== ""WRITE SYS$OUTPUT """"Nothing happens."""""""
+$ WRITE CRGF "$ WRITE SYS$OUTPUT ""  Saved games go in your TEMP directory, shared with the other visitors."""
 $ WRITE CRGF "$ WRITE SYS$OUTPUT "" """
 $ WRITE CRGF "$ EXIT"
 $ CLOSE CRGF
